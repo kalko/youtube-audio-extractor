@@ -1,0 +1,28 @@
+name = "proxy-worker"
+main = "main.ts"
+compatibility_date = "2024-09-13"
+
+[env.production]
+name = "proxy-worker-prod"
+
+[env.staging]
+name = "proxy-worker-staging"
+
+# Worker configuration
+[build]
+command = ""
+
+# Routes (optional - uncomment if you want custom domain)
+# routes = [
+#   { pattern = "proxy.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+# Environment variables (if needed)
+# [vars]
+# SOME_SECRET = "value"
+
+# KV namespaces (if you need storage)
+# [[kv_namespaces]]
+# binding = "MY_KV_NAMESPACE"
+# id = "your-kv-namespace-id"
+# preview_id = "your-preview-kv-namespace-id"

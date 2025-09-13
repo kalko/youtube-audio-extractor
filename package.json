@@ -1,0 +1,25 @@
+{
+    "name": "cloudflare-worker-proxy",
+    "version": "1.0.0",
+    "description": "A Cloudflare Worker proxy for bypassing CORS and providing unlimited proxy IPs",
+    "main": "main.ts",
+    "scripts": {
+        "dev": "wrangler dev",
+        "deploy": "wrangler deploy",
+        "deploy:staging": "wrangler deploy --env staging",
+        "deploy:production": "wrangler deploy --env production"
+    },
+    "keywords": [
+        "cloudflare",
+        "worker",
+        "proxy",
+        "cors",
+        "serverless"
+    ],
+    "author": "",
+    "license": "MIT",
+    "devDependencies": {
+        "@cloudflare/workers-types": "^4.20240909.0",
+        "wrangler": "^3.72.0"
+    }
+}

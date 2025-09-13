@@ -1,8 +1,32 @@
 {
   "tasks": {
-    "dev": "deno run --watch --allow-read --allow-net main.ts"
+    "dev": "deno run --watch --allow-net --allow-env main.ts",
+    "start": "deno run --allow-net --allow-env main.ts",
+    "test": "deno test --allow-net",
+    "format": "deno fmt",
+    "lint": "deno lint"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1"
+  },
+  "compilerOptions": {
+    "lib": [
+      "dom",
+      "deno.ns",
+      "deno.unstable"
+    ]
+  },
+  "deploy": {
+    "project": "proxy-function",
+    "entrypoint": "main.ts",
+    "include": [
+      "main.ts",
+      "deno.json"
+    ],
+    "exclude": [
+      "test.ts",
+      "example-*.js",
+      "*.md"
+    ]
   }
 }
