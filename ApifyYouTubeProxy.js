@@ -5,6 +5,7 @@ import { S3Client } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 import { Actor } from 'apify'
 import { gotScraping } from 'got-scraping'
+import { YtDlpExtractor } from './YtDlpExtractor.js'
 
 // Browser fingerprint profiles optimized for YouTube
 const BROWSER_PROFILES = [
@@ -100,6 +101,7 @@ export class ApifyYouTubeProxy {
             () => this.extractViaWatchPage(videoId),
             () => this.extractViaEmbedPage(videoId),
             () => this.extractViaMobileAPI(videoId),
+            () => this.extractViaYtDlp(videoId), // NEW: yt-dlp fallback
             () => this.extractViaOEmbed(videoId),
         ]
 
@@ -620,6 +622,46 @@ export class ApifyYouTubeProxy {
         }
 
         throw new Error('Mobile extraction failed')
+    }
+
+    async extractViaYtDlp(videoId) {
+        console.log(`🚀 Trying yt-dlp extraction for ${videoId}`)
+
+        try {
+            // Use yt-dlp to get audio URL with proxy if available
+            const extractorOptions = {}
+            if (this.proxyUrl) {
+                extractorOptions.proxy = this.proxyUrl
+            }
+
+            const result = await YtDlpExtractor.extractAudioUrl(videoId, extractorOptions)
+
+            if (result.audioUrl) {
+                // Convert to our format structure
+                const audioFormat = {
+                    itag: 'yt-dlp',
+                    url: result.audioUrl,
+                    mimeType: 'audio/mp4', // yt-dlp prefers m4a/mp4
+                    audioQuality: 'AUDIO_QUALITY_HIGH',
+                    bitrate: 128000,
+                    codec: 'mp4a.40.2',
+                    whisperReady: true,
+                    ytDlpExtracted: true,
+                }
+
+                return {
+                    videoId,
+                    audioFormats: [audioFormat],
+                    videoInfo: { title: 'yt-dlp extracted' },
+                    method: 'yt-dlp',
+                    extractedAt: new Date().toISOString(),
+                }
+            }
+        } catch (error) {
+            throw new Error(`yt-dlp extraction failed: ${error.message}`)
+        }
+
+        throw new Error('yt-dlp extraction returned no audio URL')
     }
 
     async extractViaOEmbed(videoId) {
