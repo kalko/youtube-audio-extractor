@@ -141,15 +141,25 @@ export class ApifyYouTubeProxy {
             throw new Error('No audio formats available')
         }
 
-        // Select best audio format (should be AAC itag 140)
+        // Select best audio format
         const bestAudioFormat = audioFormats[0]
 
-        // Validate we have AAC format for Whisper compatibility
-        if (!bestAudioFormat || bestAudioFormat.itag !== 140) {
-            throw new Error('No AAC audio format (itag 140) available - required for Whisper processing')
+        // Validate we have some audio format
+        if (!bestAudioFormat) {
+            throw new Error('No audio format with downloadable URL found')
         }
 
-        console.log(`🎵 Downloading AAC audio: ${bestAudioFormat.mimeType} (${bestAudioFormat.audioQuality})`)
+        // Log what format we're using
+        if (bestAudioFormat.fallback) {
+            console.log(
+                `🔄 Using fallback format: ${bestAudioFormat.mimeType} (itag ${bestAudioFormat.itag})`,
+            )
+            console.log(`⚠️ This is not AAC - Whisper may need conversion`)
+        } else {
+            console.log(
+                `🎵 Using preferred AAC format: ${bestAudioFormat.mimeType} (${bestAudioFormat.audioQuality})`,
+            )
+        }
 
         try {
             // Download audio stream
@@ -395,7 +405,7 @@ export class ApifyYouTubeProxy {
         // Check adaptive formats for AAC audio-only streams (itag 140)
         if (streamingData.adaptiveFormats) {
             console.log(`🔍 Searching through ${streamingData.adaptiveFormats.length} adaptive formats...`)
-            
+
             for (const format of streamingData.adaptiveFormats) {
                 // Debug: Log itag 140 specifically
                 if (format.itag === 140) {
@@ -404,7 +414,7 @@ export class ApifyYouTubeProxy {
                     console.log(`   hasUrl: ${!!format.url}`)
                     console.log(`   audioQuality: ${format.audioQuality}`)
                 }
-                
+
                 // ONLY extract AAC format (itag 140) for Whisper processing
                 if (
                     format.mimeType &&
@@ -412,6 +422,7 @@ export class ApifyYouTubeProxy {
                     format.itag === 140 &&
                     format.url
                 ) {
+                    console.log(`✅ AAC format with direct URL found`)
                     const audioFormat = {
                         itag: format.itag,
                         url: format.url,
@@ -426,6 +437,31 @@ export class ApifyYouTubeProxy {
 
                     audioFormats.push(audioFormat)
                     break // Only need the AAC format
+                }
+            }
+
+            // If no AAC with direct URL, find ANY audio format with URL
+            if (audioFormats.length === 0) {
+                console.log(`⚠️ No AAC with direct URL - checking for fallback audio formats...`)
+                for (const format of streamingData.adaptiveFormats) {
+                    if (format.mimeType && format.mimeType.startsWith('audio/') && format.url) {
+                        console.log(`🔄 Using fallback audio: ${format.mimeType} (itag ${format.itag})`)
+                        const audioFormat = {
+                            itag: format.itag,
+                            url: format.url,
+                            mimeType: format.mimeType,
+                            audioQuality: format.audioQuality || 'AUDIO_QUALITY_MEDIUM',
+                            bitrate: format.bitrate || format.averageBitrate || 128000,
+                            contentLength: format.contentLength,
+                            approxDurationMs: format.approxDurationMs,
+                            codec: format.mimeType.includes('opus') ? 'opus' : 'webm',
+                            whisperReady: false, // Not AAC but still usable
+                            fallback: true,
+                        }
+
+                        audioFormats.push(audioFormat)
+                        break // Take first working format
+                    }
                 }
             }
         }
