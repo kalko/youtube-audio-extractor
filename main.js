@@ -1,12 +1,10 @@
 // Apify Actor for YouTube Audio Extraction with IP Rotation and R2 Upload
-// This runs as a serverless function with different IPs on each execution
+// Extracts audio-only streams from YouTube and uploads directly to Cloudflare R2
 
+import { S3Client } from '@aws-sdk/client-s3'
+import { Upload } from '@aws-sdk/lib-storage'
 import { Actor } from 'apify'
 import { gotScraping } from 'got-scraping'
-import { HttpsProxyAgent } from 'https-proxy-agent'
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
-import { Upload } from '@aws-sdk/lib-storage'
-import { Readable } from 'stream'
 
 // Browser fingerprint profiles optimized for YouTube
 const BROWSER_PROFILES = [
@@ -42,24 +40,32 @@ class ApifyYouTubeProxy {
 
     async initialize(input = {}) {
         // Get Apify proxy configuration (automatic IP rotation)
-        this.proxyUrl = Actor.getProxyUrl({
+        const proxyConfiguration = await Actor.createProxyConfiguration({
             groups: ['RESIDENTIAL'], // Use residential IPs for better stealth
-            countryCode: input.countryCode || 'US', // Can be randomized per request
+            countryCode: input.countryCode || 'US',
         })
-
+        
+        this.proxyUrl = await proxyConfiguration.newUrl()
         this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
 
-        // Initialize R2 client if credentials provided
-        if (input.r2AccountId && input.r2AccessKeyId && input.r2SecretAccessKey) {
+        // Initialize R2 client using environment variables
+        const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID
+        const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+        const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        const r2Endpoint = process.env.CLOUDFLARE_R2_ENDPOINT
+
+        if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
             this.r2Client = new S3Client({
                 region: 'auto',
-                endpoint: `https://${input.r2AccountId}.r2.cloudflarestorage.com`,
+                endpoint: r2Endpoint || `https://${r2AccountId}.r2.cloudflarestorage.com`,
                 credentials: {
-                    accessKeyId: input.r2AccessKeyId,
-                    secretAccessKey: input.r2SecretAccessKey,
+                    accessKeyId: r2AccessKeyId,
+                    secretAccessKey: r2SecretAccessKey,
                 },
             })
-            console.log('☁️ R2 client initialized')
+            console.log('☁️ R2 client initialized from environment variables')
+        } else {
+            console.log('⚠️ R2 environment variables not found - R2 upload disabled')
         }
 
         console.log('🌐 Apify Actor initialized with:')
@@ -68,7 +74,7 @@ class ApifyYouTubeProxy {
         console.log(`☁️ R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
     }
 
-    async extractYouTubeVideo(videoUrl, uploadToR2 = false, r2BucketName = '') {
+    async extractYouTubeVideo(videoUrl, uploadToR2 = false) {
         const videoId = this.extractVideoId(videoUrl)
         if (!videoId) {
             throw new Error('Invalid YouTube URL')
@@ -88,15 +94,15 @@ class ApifyYouTubeProxy {
             try {
                 console.log(`📡 Attempt ${index + 1}: ${method.name}`)
                 const result = await method()
-                
+
                 if (result && (result.audioFormats?.length > 0 || result.url)) {
                     // If we found audio formats and R2 upload is requested
                     if (uploadToR2 && result.audioFormats?.length > 0 && this.r2Client) {
                         console.log('🎵 Audio formats found, downloading and uploading to R2...')
-                        const r2Result = await this.downloadAndUploadAudio(result, r2BucketName)
+                        const r2Result = await this.downloadAndUploadAudio(result)
                         return r2Result
                     }
-                    
+
                     return result
                 }
             } catch (error) {
@@ -110,9 +116,14 @@ class ApifyYouTubeProxy {
         throw new Error('All extraction methods failed')
     }
 
-    async downloadAndUploadAudio(extractionResult, bucketName) {
+    async downloadAndUploadAudio(extractionResult) {
         const { videoId, audioFormats, videoInfo } = extractionResult
-        
+        const bucketName = process.env.CLOUDFLARE_R2_BUCKET
+
+        if (!bucketName) {
+            throw new Error('CLOUDFLARE_R2_BUCKET environment variable not set')
+        }
+
         if (!audioFormats || audioFormats.length === 0) {
             throw new Error('No audio formats available')
         }
@@ -124,7 +135,7 @@ class ApifyYouTubeProxy {
         try {
             // Download audio stream
             const audioResponse = await this.makeRequest(bestAudioFormat.url, {
-                responseType: 'stream'
+                responseType: 'stream',
             })
 
             if (audioResponse.statusCode !== 200) {
@@ -132,8 +143,11 @@ class ApifyYouTubeProxy {
             }
 
             // Generate R2 object key
-            const fileExtension = bestAudioFormat.mimeType.includes('mp4') ? 'mp4' : 
-                                 bestAudioFormat.mimeType.includes('webm') ? 'webm' : 'audio'
+            const fileExtension = bestAudioFormat.mimeType.includes('mp4')
+                ? 'mp4'
+                : bestAudioFormat.mimeType.includes('webm')
+                ? 'webm'
+                : 'audio'
             const objectKey = `youtube-audio/${videoId}/${Date.now()}.${fileExtension}`
 
             console.log(`☁️ Uploading to R2: ${objectKey}`)
@@ -152,9 +166,9 @@ class ApifyYouTubeProxy {
                         audioQuality: bestAudioFormat.audioQuality,
                         bitrate: bestAudioFormat.bitrate?.toString() || 'unknown',
                         duration: bestAudioFormat.approxDurationMs || 'unknown',
-                        extractedAt: new Date().toISOString()
-                    }
-                }
+                        extractedAt: new Date().toISOString(),
+                    },
+                },
             })
 
             const uploadResult = await upload.done()
@@ -171,12 +185,11 @@ class ApifyYouTubeProxy {
                     key: objectKey,
                     url: `https://${bucketName}.r2.dev/${objectKey}`, // Adjust based on your R2 domain
                     etag: uploadResult.ETag,
-                    location: uploadResult.Location
+                    location: uploadResult.Location,
                 },
                 extractedAt: new Date().toISOString(),
-                method: 'audio-only-r2-upload'
+                method: 'audio-only-r2-upload',
             }
-
         } catch (error) {
             console.error(`❌ Audio download/upload failed: ${error.message}`)
             throw new Error(`Audio processing failed: ${error.message}`)
@@ -188,15 +201,19 @@ class ApifyYouTubeProxy {
         const countries = ['US', 'GB', 'CA', 'AU', 'DE']
         const randomCountry = countries[Math.floor(Math.random() * countries.length)]
 
-        this.proxyUrl = Actor.getProxyUrl({
-            groups: ['RESIDENTIAL'],
-            countryCode: randomCountry,
-            session: `session_${Date.now()}`, // Force new session = new IP
-        })
+        try {
+            const proxyConfiguration = await Actor.createProxyConfiguration({
+                groups: ['RESIDENTIAL'],
+                countryCode: randomCountry,
+            })
+            
+            this.proxyUrl = await proxyConfiguration.newUrl(`session_${Date.now()}`)
+            this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
 
-        this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
-
-        console.log(`🔄 IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
+            console.log(`🔄 IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
+        } catch (error) {
+            console.log(`⚠️ Failed to rotate proxy: ${error.message}`)
+        }
 
         // Add delay to simulate human behavior
         await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 2000))
@@ -226,10 +243,7 @@ class ApifyYouTubeProxy {
 
         // Use Apify proxy if available
         if (this.proxyUrl) {
-            requestOptions.agent = {
-                https: new HttpsProxyAgent(this.proxyUrl),
-                http: new HttpsProxyAgent(this.proxyUrl),
-            }
+            requestOptions.proxyUrl = this.proxyUrl
         }
 
         return await gotScraping(requestOptions)
@@ -288,17 +302,17 @@ class ApifyYouTubeProxy {
                 if (streamingData) {
                     // Prioritize audio-only streams
                     const audioFormats = this.extractAudioOnlyFormats(streamingData)
-                    
+
                     if (audioFormats.length > 0) {
                         return {
                             videoId,
                             audioFormats,
                             videoInfo: playerResponse.videoDetails,
                             method: 'watch',
-                            extractedAt: new Date().toISOString()
+                            extractedAt: new Date().toISOString(),
                         }
                     }
-                    
+
                     // Fallback to combined formats if no audio-only found
                     if (streamingData.formats && streamingData.formats.length > 0) {
                         const format = streamingData.formats[0]
@@ -308,7 +322,7 @@ class ApifyYouTubeProxy {
                             audioFormats: [],
                             videoInfo: playerResponse.videoDetails,
                             method: 'watch-fallback',
-                            extractedAt: new Date().toISOString()
+                            extractedAt: new Date().toISOString(),
                         }
                     }
                 }
@@ -323,7 +337,7 @@ class ApifyYouTubeProxy {
     // Extract and prioritize audio-only formats
     extractAudioOnlyFormats(streamingData) {
         const audioFormats = []
-        
+
         // Check adaptive formats for audio-only streams
         if (streamingData.adaptiveFormats) {
             for (const format of streamingData.adaptiveFormats) {
@@ -337,15 +351,18 @@ class ApifyYouTubeProxy {
                         bitrate: format.bitrate || format.averageBitrate,
                         contentLength: format.contentLength,
                         approxDurationMs: format.approxDurationMs,
-                        codec: this.extractCodec(format.mimeType)
+                        codec: this.extractCodec(format.mimeType),
                     }
-                    
+
                     // Prioritize by quality and codec
-                    if (format.itag === 140) { // AAC 128kbps - most compatible
+                    if (format.itag === 140) {
+                        // AAC 128kbps - most compatible
                         audioFormats.unshift(audioFormat)
-                    } else if (format.itag === 251) { // Opus - high quality
+                    } else if (format.itag === 251) {
+                        // Opus - high quality
                         audioFormats.push(audioFormat)
-                    } else if (format.itag === 249 || format.itag === 250) { // Opus lower quality
+                    } else if (format.itag === 249 || format.itag === 250) {
+                        // Opus lower quality
                         audioFormats.push(audioFormat)
                     } else {
                         audioFormats.push(audioFormat)
@@ -353,7 +370,7 @@ class ApifyYouTubeProxy {
                 }
             }
         }
-        
+
         return audioFormats
     }
 
@@ -433,40 +450,40 @@ Actor.main(async () => {
     const input = await Actor.getInput()
     console.log('📥 Input received:', input)
 
-    const proxy = new ApifyYouTubeProxy()
-    await proxy.initialize(input)
+    const extractor = new ApifyYouTubeProxy()
+    await extractor.initialize(input)
 
     try {
         let result
 
         if (input.youtubeUrl) {
             // YouTube audio extraction mode
-            const uploadToR2 = !!(input.r2BucketName && input.r2AccountId && input.r2AccessKeyId && input.r2SecretAccessKey)
-            
+            const uploadToR2 = !!process.env.CLOUDFLARE_R2_BUCKET && !!extractor.r2Client
+
             if (uploadToR2) {
                 console.log('🎵 YouTube audio extraction + R2 upload mode')
-                result = await proxy.extractYouTubeVideo(input.youtubeUrl, true, input.r2BucketName)
+                result = await extractor.extractYouTubeVideo(input.youtubeUrl, true)
             } else {
                 console.log('🎵 YouTube audio extraction mode (no R2 upload)')
-                result = await proxy.extractYouTubeVideo(input.youtubeUrl, false)
+                result = await extractor.extractYouTubeVideo(input.youtubeUrl, false)
             }
-            
+
             console.log('✅ YouTube extraction successful')
         } else if (input.proxyUrl) {
             // Generic proxy mode
-            result = await proxy.proxyGenericRequest(input.proxyUrl)
+            result = await extractor.proxyGenericRequest(input.proxyUrl)
             console.log('✅ Proxy request successful')
         } else {
             // Default test mode
             result = {
                 message: 'Apify YouTube Audio Extractor Actor is running!',
-                availableModes: ['youtubeUrl + R2 upload', 'youtubeUrl (extract only)', 'proxyUrl'],
+                availableModes: ['youtubeUrl (with automatic R2 upload)', 'proxyUrl'],
+                environment: {
+                    r2Configured: !!process.env.CLOUDFLARE_R2_BUCKET,
+                    bucket: process.env.CLOUDFLARE_R2_BUCKET || 'not-configured'
+                },
                 example: {
                     youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-                    r2BucketName: 'my-audio-bucket',
-                    r2AccountId: 'your-account-id',
-                    r2AccessKeyId: 'your-access-key',
-                    r2SecretAccessKey: 'your-secret-key',
                     proxyUrl: 'https://httpbin.org/ip',
                 },
                 timestamp: new Date().toISOString(),

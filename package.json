@@ -1,26 +1,25 @@
 {
-    "name": "youtube-proxy-actor",
+    "name": "youtube-audio-extractor",
     "version": "1.0.0",
-    "description": "Apify Actor for YouTube video extraction with IP rotation and anti-bot detection",
+    "type": "module",
+    "description": "Apify Actor for YouTube audio extraction with IP rotation and R2 upload",
     "main": "main.js",
     "scripts": {
-        "start": "node main.js",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "start": "node main.js"
     },
     "keywords": [
         "apify",
         "actor",
         "youtube",
-        "proxy",
-        "scraping",
-        "video-extraction"
+        "audio-extraction",
+        "r2-upload",
+        "proxy"
     ],
     "author": "Your Name",
     "license": "MIT",
     "dependencies": {
         "apify": "^3.0.0",
         "got-scraping": "^3.2.15",
-        "https-proxy-agent": "^7.0.0",
         "@aws-sdk/client-s3": "^3.0.0",
         "@aws-sdk/lib-storage": "^3.0.0"
     },
