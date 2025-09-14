@@ -1,6 +1,8 @@
-// 🚀 Enhanced Deno Deploy Proxy for yt-dlp
-// Deploy this at deno.com/deploy - 100k requests/day FREE
-// Specifically designed to bypass YouTube's anti-bot detection
+// 🚀 Complete YouTube Proxy with Built-in Video Parser
+// Deploy this to Deno Deploy - completely bypasses yt-dlp
+// Handles: Cookie extraction, Video parsing, Direct download
+
+import { YouTubeParser } from './youtube-parser.ts'
 
 Deno.serve(async (request: Request): Promise<Response> => {
     const url = new URL(request.url)
@@ -18,14 +20,24 @@ Deno.serve(async (request: Request): Promise<Response> => {
         })
     }
 
-    // Extract target URL from query parameter
+    // Extract parameters
     const targetUrl = url.searchParams.get('url')
+    const extractCookies = url.searchParams.get('extract_cookies') === 'true'
+    const extractVideo = url.searchParams.get('extract_video') === 'true'
+    const downloadDirect = url.searchParams.get('download') === 'true'
+    const maxSizeMB = parseInt(url.searchParams.get('max_size') || '100')
+
     if (!targetUrl) {
         return new Response(
             JSON.stringify({
                 error: 'Missing url parameter',
-                usage: 'Add ?url=https://example.com to your request',
-                example: `${url.origin}/?url=${encodeURIComponent('https://youtube.com/watch?v=VIDEO_ID')}`,
+                usage: 'Add ?url=https://youtube.com/watch?v=VIDEO_ID to your request',
+                examples: {
+                    extract_cookies: `${url.origin}/?url=YOUTUBE_URL&extract_cookies=true`,
+                    extract_video: `${url.origin}/?url=YOUTUBE_URL&extract_video=true`,
+                    download_direct: `${url.origin}/?url=YOUTUBE_URL&download=true`,
+                    with_size_limit: `${url.origin}/?url=YOUTUBE_URL&download=true&max_size=50`,
+                },
             }),
             {
                 status: 400,
@@ -37,195 +49,154 @@ Deno.serve(async (request: Request): Promise<Response> => {
         )
     }
 
-    // Validate URL format
     try {
-        new URL(targetUrl)
-    } catch {
-        return new Response(
-            JSON.stringify({
-                error: 'Invalid URL format',
-                provided: targetUrl,
-            }),
-            {
-                status: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
+        const isYouTube = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')
+
+        console.log(`🔍 Request: ${isYouTube ? 'YouTube' : 'other'} → ${targetUrl}`)
+        console.log(`🎯 Flags: cookies=${extractCookies}, video=${extractVideo}, download=${downloadDirect}`)
+
+        // 🎥 YOUTUBE VIDEO EXTRACTION
+        if (extractVideo && isYouTube) {
+            const videoId = YouTubeParser.extractVideoId(targetUrl)
+            if (!videoId) {
+                throw new Error('Could not extract video ID from URL')
+            }
+
+            console.log(`📹 Extracting video info for: ${videoId}`)
+            const videoInfo = await YouTubeParser.extractVideoInfo(videoId)
+
+            return new Response(
+                JSON.stringify({
+                    success: true,
+                    videoId,
+                    videoInfo,
+                    extractedAt: new Date().toISOString(),
+                }),
+                {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'X-Video-Extracted': 'true',
+                        'X-Video-ID': videoId,
+                    },
                 },
-            },
-        )
-    }
+            )
+        }
 
-    // 🎯 DETECT YT-DLP AND YOUTUBE REQUESTS
-    const userAgent = request.headers.get('user-agent') || ''
-    const isYtDlp =
-        userAgent.includes('yt-dlp') || userAgent.includes('youtube-dl') || userAgent.includes('Python')
-    const isYouTube =
-        targetUrl.includes('youtube.com') ||
-        targetUrl.includes('youtu.be') ||
-        targetUrl.includes('googlevideo.com')
+        // 📥 DIRECT VIDEO DOWNLOAD
+        if (downloadDirect && isYouTube) {
+            const videoId = YouTubeParser.extractVideoId(targetUrl)
+            if (!videoId) {
+                throw new Error('Could not extract video ID from URL')
+            }
 
-    console.log(
-        `🔍 Request: ${isYtDlp ? 'yt-dlp' : 'browser'} → ${isYouTube ? 'YouTube' : 'other'} → ${targetUrl}`,
-    )
+            console.log(`⬇️ Direct download for: ${videoId}`)
+            const videoInfo = await YouTubeParser.extractVideoInfo(videoId)
 
-    // 🚀 BUILD ANTI-DETECTION HEADERS
-    const headers = new Headers()
+            if (!videoInfo.videoUrl) {
+                throw new Error('No video URL found')
+            }
 
-    if (isYouTube) {
-        console.log(`🎥 YouTube request detected - applying anti-bot measures`)
+            // Download the video with size limit
+            const maxSizeBytes = maxSizeMB * 1024 * 1024
+            const videoBuffer = await YouTubeParser.downloadVideo(videoInfo.videoUrl, { maxSizeBytes })
 
-        // 🎲 ROTATE BROWSER PROFILES FOR DIVERSITY
-        const browserProfiles = [
-            {
-                userAgent:
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                acceptLanguage: 'en-US,en;q=0.9',
-                secChUa: '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-                secChUaPlatform: '"Windows"',
-            },
-            {
-                userAgent:
-                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                acceptLanguage: 'en-US,en;q=0.9',
-                secChUa: '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-                secChUaPlatform: '"macOS"',
-            },
-            {
-                userAgent:
-                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                acceptLanguage: 'en-US,en;q=0.9',
-                secChUa: '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-                secChUaPlatform: '"Linux"',
-            },
-        ]
+            console.log(`✅ Downloaded ${Math.round(videoBuffer.byteLength / 1024 / 1024)}MB`)
 
-        const profile = browserProfiles[Math.floor(Math.random() * browserProfiles.length)]
+            return new Response(videoBuffer, {
+                status: 200,
+                headers: {
+                    'Content-Type': `video/${videoInfo.format}`,
+                    'Content-Length': videoBuffer.byteLength.toString(),
+                    'Content-Disposition': `attachment; filename="${videoInfo.title || videoId}.${
+                        videoInfo.format
+                    }"`,
+                    'Access-Control-Allow-Origin': '*',
+                    'X-Video-ID': videoId,
+                    'X-Video-Quality': videoInfo.quality,
+                    'X-Video-Format': videoInfo.format,
+                },
+            })
+        }
 
-        // 🛡️ ESSENTIAL ANTI-DETECTION HEADERS
-        headers.set('User-Agent', profile.userAgent)
-        headers.set(
-            'Accept',
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        )
-        headers.set('Accept-Language', profile.acceptLanguage)
-        headers.set('Accept-Encoding', 'gzip, deflate, br')
-        headers.set('Cache-Control', 'no-cache')
-        headers.set('Pragma', 'no-cache')
-        headers.set('Upgrade-Insecure-Requests', '1')
-        headers.set('DNT', '1')
+        // 🍪 REGULAR PROXY WITH COOKIE EXTRACTION (original functionality)
+        const headers = new Headers()
 
-        // 🔒 MODERN BROWSER SECURITY HEADERS
-        headers.set('Sec-Fetch-Dest', 'document')
-        headers.set('Sec-Fetch-Mode', 'navigate')
-        headers.set('Sec-Fetch-Site', 'none')
-        headers.set('Sec-Fetch-User', '?1')
-        headers.set('Sec-Ch-Ua', profile.secChUa)
-        headers.set('Sec-Ch-Ua-Mobile', '?0')
-        headers.set('Sec-Ch-Ua-Platform', profile.secChUaPlatform)
+        if (isYouTube) {
+            console.log(`🎥 YouTube request - applying anti-bot measures`)
 
-        // 🌍 GEOGRAPHIC IP DIVERSITY
-        const generateRandomIP = () => {
-            // Use realistic IP ranges from major ISPs
-            const ranges = [
-                () =>
-                    `${Math.floor(Math.random() * 50) + 8}.${Math.floor(Math.random() * 256)}.${Math.floor(
-                        Math.random() * 256,
-                    )}.${Math.floor(Math.random() * 256)}`, // US
-                () =>
-                    `${Math.floor(Math.random() * 20) + 80}.${Math.floor(Math.random() * 256)}.${Math.floor(
-                        Math.random() * 256,
-                    )}.${Math.floor(Math.random() * 256)}`, // EU
-                () =>
-                    `${Math.floor(Math.random() * 30) + 110}.${Math.floor(Math.random() * 256)}.${Math.floor(
-                        Math.random() * 256,
-                    )}.${Math.floor(Math.random() * 256)}`, // APAC
+            // Enhanced browser profiles
+            const profiles = [
+                {
+                    userAgent:
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    acceptLanguage: 'en-US,en;q=0.9',
+                    platform: 'Windows',
+                },
+                {
+                    userAgent:
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    acceptLanguage: 'en-US,en;q=0.9',
+                    platform: 'macOS',
+                },
+                {
+                    userAgent:
+                        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    acceptLanguage: 'en-US,en;q=0.9',
+                    platform: 'Linux',
+                },
             ]
-            const randomRange = ranges[Math.floor(Math.random() * ranges.length)]
-            return randomRange()
-        }
 
-        const randomIP = generateRandomIP()
-        headers.set('X-Forwarded-For', randomIP)
-        headers.set('X-Real-IP', randomIP)
+            const profile = profiles[Math.floor(Math.random() * profiles.length)]
 
-        // 🗺️ GEOGRAPHIC METADATA
-        const countries = ['US', 'CA', 'GB', 'DE', 'FR', 'AU', 'NL', 'SE', 'JP', 'SG']
-        const randomCountry = countries[Math.floor(Math.random() * countries.length)]
-        headers.set('CF-IPCountry', randomCountry)
+            headers.set('User-Agent', profile.userAgent)
+            headers.set(
+                'Accept',
+                'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            )
+            headers.set('Accept-Language', profile.acceptLanguage)
+            headers.set('Accept-Encoding', 'gzip, deflate, br')
+            headers.set('Cache-Control', 'no-cache')
+            headers.set('DNT', '1')
+            headers.set('Upgrade-Insecure-Requests', '1')
+            headers.set('Sec-Fetch-Dest', 'document')
+            headers.set('Sec-Fetch-Mode', 'navigate')
+            headers.set('Sec-Fetch-Site', 'none')
+            headers.set('Sec-Fetch-User', '?1')
 
-        // 🕐 REALISTIC REFERRER PATTERNS
-        const referrers = [
-            'https://www.google.com/',
-            'https://www.youtube.com/',
-            'https://duckduckgo.com/',
-            'https://www.bing.com/',
-        ]
-        const randomReferrer = referrers[Math.floor(Math.random() * referrers.length)]
-        headers.set('Referer', randomReferrer)
-
-        console.log(`🌐 IP: ${randomIP} | Country: ${randomCountry} | Profile: ${profile.secChUaPlatform}`)
-    } else {
-        // 📝 REGULAR PROXY BEHAVIOR FOR NON-YOUTUBE
-        headers.set('User-Agent', userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        headers.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
-        headers.set('Accept-Language', 'en-US,en;q=0.5')
-        headers.set('Accept-Encoding', 'gzip, deflate, br')
-    }
-
-    // 📋 COPY ESSENTIAL HEADERS FROM ORIGINAL REQUEST
-    const allowedHeaders = [
-        'authorization',
-        'content-type',
-        'x-api-key',
-        'range',
-        'cookie',
-        'x-youtube-client-name',
-        'x-youtube-client-version',
-    ]
-
-    for (const [key, value] of request.headers.entries()) {
-        if (allowedHeaders.includes(key.toLowerCase())) {
-            headers.set(key, value)
-        }
-    }
-
-    try {
-        // ⏱️ ADD REALISTIC DELAYS FOR YOUTUBE REQUESTS
-        if (isYouTube && isYtDlp) {
-            const delay = Math.floor(Math.random() * 2000) + 500 // 0.5-2.5 seconds
-            console.log(`⏱️ Adding ${delay}ms delay for anti-detection`)
+            // Realistic delays
+            const delay = Math.floor(Math.random() * 3000) + 1000
+            console.log(`⏱️ Adding ${delay}ms anti-detection delay`)
             await new Promise((resolve) => setTimeout(resolve, delay))
         }
 
         console.log(`🚀 Forwarding request to: ${targetUrl}`)
 
-        // 🌐 FORWARD REQUEST WITH ANTI-DETECTION
         const response = await fetch(targetUrl, {
             method: request.method,
-            headers: headers,
-            body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
-            // Add timeout to prevent hanging
-            signal: AbortSignal.timeout(30000), // 30 second timeout
+            headers,
+            body: request.method !== 'GET' ? request.body : undefined,
         })
 
-        // 📤 PREPARE RESPONSE WITH CORS HEADERS
+        // Prepare response headers
         const corsHeaders = new Headers(response.headers)
         corsHeaders.set('Access-Control-Allow-Origin', '*')
         corsHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-        corsHeaders.set(
-            'Access-Control-Allow-Headers',
-            'Content-Type, Authorization, User-Agent, X-Forwarded-For',
-        )
+        corsHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, User-Agent')
         corsHeaders.set('X-Proxy-Status', 'success')
         corsHeaders.set('X-Target-URL', targetUrl)
-        corsHeaders.set('X-Anti-Detection', isYouTube ? 'enabled' : 'disabled')
-        corsHeaders.set('X-Request-Type', isYtDlp ? 'yt-dlp' : 'browser')
+
+        // 🍪 Extract and forward cookies if requested
+        if (extractCookies && response.headers.get('set-cookie')) {
+            const cookies = response.headers.get('set-cookie')
+            corsHeaders.set('X-Extracted-Cookies', cookies || '')
+            corsHeaders.set('Set-Cookie', cookies || '')
+            console.log(`🍪 Extracted ${cookies?.split(',').length || 0} cookies`)
+        }
 
         console.log(
-            `✅ Response: ${response.status} ${response.statusText} | Size: ${
-                response.headers.get('content-length') || 'unknown'
-            }`,
+            `✅ Response: ${response.status} | Size: ${response.headers.get('content-length') || 'unknown'}`,
         )
 
         return new Response(response.body, {
@@ -237,19 +208,16 @@ Deno.serve(async (request: Request): Promise<Response> => {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error(`❌ Proxy error for ${targetUrl}:`, errorMessage)
 
-        // 🔄 PROVIDE HELPFUL ERROR INFORMATION
         return new Response(
             JSON.stringify({
                 error: 'Proxy request failed',
                 message: errorMessage,
                 targetUrl: targetUrl,
                 timestamp: new Date().toISOString(),
-                requestType: isYtDlp ? 'yt-dlp' : 'browser',
-                isYouTube: isYouTube,
                 suggestions: [
-                    'Check if the target URL is accessible',
-                    'Verify the URL is properly encoded',
-                    'Try again in a few moments',
+                    'Check if the YouTube URL is valid',
+                    'Try a different video',
+                    'Wait a few moments and try again',
                 ],
             }),
             {
@@ -266,27 +234,24 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
 /* 🎯 USAGE EXAMPLES:
 
-1. For yt-dlp (your main use case):
-   yt-dlp --proxy "https://your-function.deno.dev/?url=YOUTUBE_URL" "YOUTUBE_URL"
-
-2. From your Node.js backend:
-   const proxyUrl = `${DENO_DEPLOY_URL}/?url=${encodeURIComponent(youtubeUrl)}`
+1. Extract video info:
+   GET https://your-proxy.deno.dev/?url=https://youtube.com/watch?v=VIDEO_ID&extract_video=true
    
-3. Test the proxy:
-   curl "https://your-function.deno.dev/?url=https%3A//www.youtube.com/watch%3Fv%3DVIDEO_ID"
+2. Download video directly:
+   GET https://your-proxy.deno.dev/?url=https://youtube.com/watch?v=VIDEO_ID&download=true&max_size=50
+   
+3. Extract cookies (original functionality):
+   GET https://your-proxy.deno.dev/?url=https://youtube.com/watch?v=VIDEO_ID&extract_cookies=true
 
-4. Deploy to Deno Deploy:
-   - Go to deno.com/deploy
-   - Create new project
-   - Paste this code
-   - Deploy for FREE (100k requests/day)
+4. Regular proxy (original functionality):
+   GET https://your-proxy.deno.dev/?url=https://youtube.com/watch?v=VIDEO_ID
 
-🚀 This proxy handles:
-- yt-dlp user agent detection
-- YouTube anti-bot evasion
-- Random IP rotation
-- Realistic browser headers
-- Geographic diversity
-- Proper CORS support
-- Error handling with helpful messages
+📁 DEPLOYMENT STRUCTURE:
+/your-deno-project/
+├── main.ts (this file)
+└── youtube-parser.ts (the parser)
+
+🚀 DEPLOY COMMAND:
+deployctl deploy --project=your-project main.ts
+
 */
