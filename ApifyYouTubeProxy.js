@@ -249,8 +249,8 @@ export class ApifyYouTubeProxy {
                 'Sec-Fetch-User': '?1',
                 ...options.headers,
             },
-            timeout: 30000,
-            retry: 0, // We handle retries manually
+            timeout: { request: 30000 }, // Fix: timeout should be an object
+            retry: { limit: 0 }, // Fix: retry should be an object with limit property
             ...options,
         }
 
