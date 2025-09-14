@@ -312,7 +312,7 @@ export class ApifyYouTubeProxy {
                 'Sec-Fetch-User': '?1',
                 ...options.headers,
             },
-            timeout: { request: 30000 }, // Fix: timeout should be an object
+            timeout: { request: 480000 }, // 8 minutes timeout for large audio files
             retry: { limit: 0 }, // Fix: retry should be an object with limit property
             ...options,
         }
