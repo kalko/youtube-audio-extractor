@@ -7,26 +7,34 @@
             "title": "YouTube Video URL",
             "type": "string",
             "description": "YouTube video URL to extract (e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
-            "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "editor": "textfield",
+            "prefill": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         },
         "proxyUrl": {
             "title": "Generic Proxy URL",
             "type": "string",
             "description": "Any URL to proxy through with IP rotation (e.g., https://httpbin.org/ip)",
-            "example": "https://httpbin.org/ip"
+            "example": "https://httpbin.org/ip",
+            "editor": "textfield",
+            "prefill": "https://httpbin.org/ip"
         },
         "useResidentialProxy": {
             "title": "Use Residential Proxy",
             "type": "boolean",
             "description": "Use residential IPs for better stealth (recommended for YouTube)",
-            "default": true
+            "default": true,
+            "editor": "checkbox"
         },
         "countryCode": {
             "title": "Proxy Country Code",
             "type": "string",
             "description": "Country code for proxy (US, GB, CA, AU, DE, etc.)",
             "default": "US",
-            "pattern": "^[A-Z]{2}$"
+            "pattern": "^[A-Z]{2}$",
+            "editor": "select",
+            "enum": ["US", "GB", "CA", "AU", "DE", "FR", "JP", "BR", "IN", "MX"],
+            "enumTitles": ["United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Japan", "Brazil", "India", "Mexico"]
         },
         "maxRetries": {
             "title": "Maximum Retries",
@@ -34,7 +42,8 @@
             "description": "Maximum number of extraction attempts with different IPs",
             "default": 3,
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "editor": "number"
         }
     },
     "required": []
