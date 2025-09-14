@@ -72,7 +72,7 @@ export class ApifyYouTubeProxy {
         console.log(`📍 Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
         console.log(`🎭 Profile: ${this.currentProfile.platform}`)
         console.log(`☁️ R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
-        
+
         // Log current IP address
         await this.logCurrentIP()
     }
@@ -216,7 +216,7 @@ export class ApifyYouTubeProxy {
                 proxyInfo: {
                     proxyUsed: !!this.proxyUrl,
                     profile: this.currentProfile.platform,
-                    extractionMethod: 'watch-page-with-proxy'
+                    extractionMethod: 'watch-page-with-proxy',
                 },
                 extractedAt: new Date().toISOString(),
                 method: 'aac-whisper-optimized',
@@ -242,7 +242,7 @@ export class ApifyYouTubeProxy {
             this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
 
             console.log(`🔄 IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
-            
+
             // Log new IP after rotation
             try {
                 const ipResponse = await this.makeRequest('https://httpbin.org/ip')
@@ -340,16 +340,30 @@ export class ApifyYouTubeProxy {
                 const streamingData = playerResponse.streamingData
 
                 if (streamingData) {
+                    console.log('📊 Found streaming data, looking for AAC audio...')
+
                     // Prioritize audio-only streams
                     const audioFormats = this.extractAudioOnlyFormats(streamingData)
 
                     if (audioFormats.length > 0) {
+                        console.log(`🎵 Found ${audioFormats.length} AAC audio format(s)`)
                         return {
                             videoId,
                             audioFormats,
                             videoInfo: playerResponse.videoDetails,
                             method: 'watch',
                             extractedAt: new Date().toISOString(),
+                        }
+                    } else {
+                        console.log('⚠️ No AAC audio format (itag 140) found in adaptive formats')
+
+                        // Debug: Log what formats we do have
+                        if (streamingData.adaptiveFormats) {
+                            console.log(
+                                `📋 Available formats: ${streamingData.adaptiveFormats
+                                    .map((f) => f.itag)
+                                    .join(', ')}`,
+                            )
                         }
                     }
 
@@ -382,7 +396,12 @@ export class ApifyYouTubeProxy {
         if (streamingData.adaptiveFormats) {
             for (const format of streamingData.adaptiveFormats) {
                 // ONLY extract AAC format (itag 140) for Whisper processing
-                if (format.mimeType && format.mimeType.startsWith('audio/mp4') && format.itag === 140) {
+                if (
+                    format.mimeType &&
+                    format.mimeType.startsWith('audio/mp4') &&
+                    format.itag === 140 &&
+                    format.url
+                ) {
                     const audioFormat = {
                         itag: format.itag,
                         url: format.url,
