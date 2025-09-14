@@ -1,0 +1,36 @@
+{
+    "title": "YouTube Audio Extractor Input",
+    "description": "Extract audio from YouTube videos with IP rotation and upload to Cloudflare R2",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "youtubeUrl": {
+            "title": "YouTube URL",
+            "type": "string",
+            "description": "YouTube video URL to extract audio from",
+            "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "pattern": "^https://(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[a-zA-Z0-9_-]{11}.*$"
+        },
+        "proxyUrl": {
+            "title": "Proxy URL (Optional)",
+            "type": "string",
+            "description": "Generic URL to proxy through Apify's residential network",
+            "example": "https://httpbin.org/ip"
+        },
+        "countryCode": {
+            "title": "Country Code",
+            "type": "string",
+            "description": "Country code for proxy geolocation (US, GB, CA, AU, DE, etc.)",
+            "default": "US",
+            "example": "US"
+        },
+        "maxRetries": {
+            "title": "Max Retries",
+            "type": "integer",
+            "description": "Maximum number of extraction attempts with different IPs",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 10
+        }
+    }
+}
