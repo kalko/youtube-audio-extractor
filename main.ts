@@ -59,29 +59,88 @@ Deno.serve(async (request: Request): Promise<Response> => {
         if (extractVideo && isYouTube) {
             const videoId = YouTubeParser.extractVideoId(targetUrl)
             if (!videoId) {
-                throw new Error('Could not extract video ID from URL')
+                return new Response(
+                    JSON.stringify({
+                        error: 'Could not extract video ID from URL',
+                        targetUrl,
+                        supportedFormats: [
+                            'https://youtube.com/watch?v=VIDEO_ID',
+                            'https://youtu.be/VIDEO_ID',
+                            'https://youtube.com/embed/VIDEO_ID'
+                        ]
+                    }),
+                    {
+                        status: 400,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                        },
+                    }
+                )
             }
 
             console.log(`📹 Extracting video info for: ${videoId}`)
-            const videoInfo = await YouTubeParser.extractVideoInfo(videoId)
+            
+            try {
+                const videoInfo = await YouTubeParser.extractVideoInfo(videoId)
 
-            return new Response(
-                JSON.stringify({
-                    success: true,
-                    videoId,
-                    videoInfo,
-                    extractedAt: new Date().toISOString(),
-                }),
-                {
-                    status: 200,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*',
-                        'X-Video-Extracted': 'true',
-                        'X-Video-ID': videoId,
-                    },
-                },
-            )
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        videoId,
+                        videoInfo,
+                        extractedAt: new Date().toISOString(),
+                        debug: {
+                            hasVideoUrl: !!videoInfo.videoUrl,
+                            hasAudioUrl: !!videoInfo.audioUrl,
+                            title: videoInfo.title,
+                            quality: videoInfo.quality,
+                        }
+                    }),
+                    {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                            'X-Video-Extracted': 'true',
+                            'X-Video-ID': videoId,
+                        },
+                    }
+                )
+            } catch (extractionError) {
+                const errorMsg = extractionError instanceof Error ? extractionError.message : 'Unknown extraction error'
+                console.error(`❌ Video extraction failed for ${videoId}:`, errorMsg)
+                
+                return new Response(
+                    JSON.stringify({
+                        error: 'Video extraction failed',
+                        message: errorMsg,
+                        videoId,
+                        targetUrl,
+                        timestamp: new Date().toISOString(),
+                        debug: {
+                            isYouTube: true,
+                            extractedVideoId: videoId,
+                            errorType: 'extraction_failed'
+                        },
+                        suggestions: [
+                            'This video might be private, restricted, or deleted',
+                            'YouTube may be blocking automated requests',
+                            'Try again in a few minutes',
+                            'Check if the video is available in your region'
+                        ]
+                    }),
+                    {
+                        status: 500,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                            'X-Video-ID': videoId,
+                            'X-Extraction-Error': 'true'
+                        },
+                    }
+                )
+            }
         }
 
         // 📥 DIRECT VIDEO DOWNLOAD

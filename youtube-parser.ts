@@ -58,13 +58,16 @@ class YouTubeParser {
     static async extractVideoInfo(videoId: string): Promise<VideoInfo> {
         console.log(`🎥 Extracting video info for: ${videoId}`)
 
-        // Try multiple extraction methods
+        // Try multiple extraction methods with better error handling
         const methods = [
-            () => this.extractFromWebPlayer(videoId),
             () => this.extractFromEmbedded(videoId),
             () => this.extractFromMobile(videoId),
             () => this.extractFromTvEmbedded(videoId),
+            () => this.extractFromWebPlayer(videoId),
+            () => this.extractFromOEmbed(videoId), // New fallback method
         ]
+
+        let lastError: Error | null = null
 
         for (const method of methods) {
             try {
@@ -74,12 +77,40 @@ class YouTubeParser {
                     return result
                 }
             } catch (error) {
-                console.log(`⚠️ Extraction method failed: ${(error as Error).message}`)
+                lastError = error as Error
+                console.log(`⚠️ Extraction method failed: ${lastError.message}`)
+                
+                // Add delay between attempts to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 1000))
                 continue
             }
         }
 
-        throw new Error('All extraction methods failed')
+        throw new Error(`All extraction methods failed. Last error: ${lastError?.message || 'Unknown error'}`)
+    }
+
+    // New fallback method using oEmbed API
+    private static async extractFromOEmbed(videoId: string): Promise<VideoInfo> {
+        console.log(`🔗 Trying oEmbed extraction for ${videoId}`)
+        
+        const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+        
+        if (!response.ok) {
+            throw new Error(`oEmbed API failed: ${response.status}`)
+        }
+        
+        const data = await response.json()
+        
+        // oEmbed doesn't provide direct video URLs, but we can get basic info
+        return {
+            videoUrl: null,
+            audioUrl: null,
+            title: data.title || null,
+            duration: null,
+            format: 'unknown',
+            quality: 'unknown',
+            filesize: null,
+        }
     }
 
     private static async extractFromWebPlayer(videoId: string): Promise<VideoInfo> {
@@ -87,10 +118,13 @@ class YouTubeParser {
 
         const userAgent = this.USER_AGENTS[Math.floor(Math.random() * this.USER_AGENTS.length)]
         
+        // Add more realistic delay
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000))
+        
         const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
             headers: {
                 'User-Agent': userAgent,
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Cache-Control': 'no-cache',
@@ -100,6 +134,9 @@ class YouTubeParser {
                 'Sec-Fetch-Mode': 'navigate',
                 'Sec-Fetch-Site': 'none',
                 'Sec-Fetch-User': '?1',
+                'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
             },
         })
 
@@ -108,6 +145,13 @@ class YouTubeParser {
         }
 
         const html = await response.text()
+        
+        // Check for bot detection
+        if (html.includes('captcha') || html.includes('robot') || html.includes('automated')) {
+            console.log(`🤖 Bot detection detected for ${videoId}`)
+            throw new Error('Bot detection encountered')
+        }
+        
         return this.parsePlayerResponse(html, 'web')
     }
 
@@ -173,12 +217,14 @@ class YouTubeParser {
     private static parsePlayerResponse(html: string, method: string): VideoInfo {
         console.log(`🔍 Parsing player response from ${method}`)
 
-        // Extract ytInitialPlayerResponse
+        // Extract ytInitialPlayerResponse with more patterns
         const patterns = [
             /var ytInitialPlayerResponse = ({.+?});/,
             /window\["ytInitialPlayerResponse"\] = ({.+?});/,
             /"ytInitialPlayerResponse":({.+?}),"ytInitialData"/,
             /ytInitialPlayerResponse":\s*({.+?})\s*[,}]/,
+            /"ytInitialPlayerResponse"\s*:\s*({.+?})\s*(?:,|})/,
+            /ytInitialPlayerResponse\s*=\s*({.+?});/,
         ]
 
         let playerResponse: any = null
@@ -188,7 +234,7 @@ class YouTubeParser {
             if (match) {
                 try {
                     playerResponse = JSON.parse(match[1])
-                    console.log(`✅ Found player response via pattern`)
+                    console.log(`✅ Found player response via pattern (${method})`)
                     break
                 } catch (error) {
                     console.log(`⚠️ Failed to parse player response: ${(error as Error).message}`)
@@ -198,7 +244,27 @@ class YouTubeParser {
         }
 
         if (!playerResponse) {
-            throw new Error('Could not extract player response')
+            // Try alternative extraction method
+            console.log(`🔄 Trying alternative extraction for ${method}`)
+            
+            // Look for any JSON structure that might contain video data
+            const jsonMatches = html.match(/"videoDetails":\s*{[^}]+}/g)
+            if (jsonMatches && jsonMatches.length > 0) {
+                try {
+                    const videoDetailsStr = jsonMatches[0]
+                    const fullMatch = html.match(new RegExp(`{[^{]*${videoDetailsStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^}]*}`))
+                    if (fullMatch) {
+                        playerResponse = JSON.parse(fullMatch[0])
+                        console.log(`✅ Found player response via alternative method`)
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Alternative extraction failed: ${(error as Error).message}`)
+                }
+            }
+        }
+
+        if (!playerResponse) {
+            throw new Error('Could not extract player response from HTML')
         }
 
         return this.parseStreamingData(playerResponse)
