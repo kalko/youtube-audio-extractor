@@ -1,0 +1,29 @@
+{
+    "name": "youtube-proxy-actor",
+    "version": "1.0.0",
+    "description": "Apify Actor for YouTube video extraction with IP rotation and anti-bot detection",
+    "main": "main.js",
+    "scripts": {
+        "start": "node main.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "apify",
+        "actor",
+        "youtube",
+        "proxy",
+        "scraping",
+        "video-extraction"
+    ],
+    "author": "Your Name",
+    "license": "MIT",
+    "dependencies": {
+        "apify": "^3.0.0",
+        "got-scraping": "^3.2.15",
+        "https-proxy-agent": "^7.0.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/kalko/examples-hello-world.git"
+    }
+}
