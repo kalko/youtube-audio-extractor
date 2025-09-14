@@ -150,7 +150,12 @@ export class ApifyYouTubeProxy {
         }
 
         // Log what format we're using
-        if (bestAudioFormat.fallback) {
+        if (bestAudioFormat.combined) {
+            console.log(
+                `🔄 Using combined audio+video format: ${bestAudioFormat.mimeType} (itag ${bestAudioFormat.itag})`,
+            )
+            console.log(`⚠️ This contains video - will upload as-is for now`)
+        } else if (bestAudioFormat.fallback) {
             console.log(
                 `🔄 Using fallback format: ${bestAudioFormat.mimeType} (itag ${bestAudioFormat.itag})`,
             )
@@ -356,7 +361,7 @@ export class ApifyYouTubeProxy {
                     const audioFormats = this.extractAudioOnlyFormats(streamingData)
 
                     if (audioFormats.length > 0) {
-                        console.log(`🎵 Found ${audioFormats.length} AAC audio format(s)`)
+                        console.log(`🎵 Found ${audioFormats.length} audio format(s) with direct URLs`)
                         return {
                             videoId,
                             audioFormats,
@@ -365,7 +370,7 @@ export class ApifyYouTubeProxy {
                             extractedAt: new Date().toISOString(),
                         }
                     } else {
-                        console.log('⚠️ No AAC audio format (itag 140) found in adaptive formats')
+                        console.log('⚠️ No audio formats with direct URLs found (likely signature-protected)')
 
                         // Debug: Log what formats we do have
                         if (streamingData.adaptiveFormats) {
@@ -377,16 +382,40 @@ export class ApifyYouTubeProxy {
                         }
                     }
 
-                    // Fallback to combined formats if no audio-only found
+                    // ✅ FALLBACK: Use combined formats (like original working version)
                     if (streamingData.formats && streamingData.formats.length > 0) {
+                        console.log(`🔄 Falling back to combined formats (original working method)`)
                         const format = streamingData.formats[0]
-                        return {
-                            videoId,
-                            url: format.url,
-                            audioFormats: [],
-                            videoInfo: playerResponse.videoDetails,
-                            method: 'watch-fallback',
-                            extractedAt: new Date().toISOString(),
+
+                        if (format.url) {
+                            console.log(
+                                `✅ Found combined format with direct URL: ${
+                                    format.mimeType || 'unknown'
+                                } (itag ${format.itag})`,
+                            )
+
+                            // Convert to our audio format structure for consistency
+                            const audioFormat = {
+                                itag: format.itag,
+                                url: format.url,
+                                mimeType: format.mimeType || 'video/mp4',
+                                audioQuality: format.audioQuality || 'AUDIO_QUALITY_MEDIUM',
+                                bitrate: format.bitrate || format.averageBitrate || 128000,
+                                contentLength: format.contentLength,
+                                approxDurationMs: format.approxDurationMs,
+                                codec: 'mixed', // This is audio+video combined
+                                whisperReady: false, // Will need audio extraction
+                                fallback: true,
+                                combined: true, // Flag that this is audio+video
+                            }
+
+                            return {
+                                videoId,
+                                audioFormats: [audioFormat],
+                                videoInfo: playerResponse.videoDetails,
+                                method: 'watch-combined',
+                                extractedAt: new Date().toISOString(),
+                            }
                         }
                     }
                 }
@@ -443,6 +472,19 @@ export class ApifyYouTubeProxy {
             // If no AAC with direct URL, find ANY audio format with URL
             if (audioFormats.length === 0) {
                 console.log(`⚠️ No AAC with direct URL - checking for fallback audio formats...`)
+
+                // Debug: Show which formats have URLs
+                const formatsWithUrls = streamingData.adaptiveFormats.filter((f) => f.url)
+                console.log(`🔍 Found ${formatsWithUrls.length} formats with direct URLs`)
+
+                const audioFormatsWithUrls = formatsWithUrls.filter(
+                    (f) => f.mimeType && f.mimeType.startsWith('audio/'),
+                )
+                console.log(`🎵 Found ${audioFormatsWithUrls.length} audio formats with URLs:`)
+                audioFormatsWithUrls.forEach((f) => {
+                    console.log(`   - itag ${f.itag}: ${f.mimeType}`)
+                })
+
                 for (const format of streamingData.adaptiveFormats) {
                     if (format.mimeType && format.mimeType.startsWith('audio/') && format.url) {
                         console.log(`🔄 Using fallback audio: ${format.mimeType} (itag ${format.itag})`)
