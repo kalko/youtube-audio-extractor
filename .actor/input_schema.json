@@ -31,7 +31,6 @@
             "type": "string",
             "description": "Country code for proxy (US, GB, CA, AU, DE, etc.)",
             "default": "US",
-            "pattern": "^[A-Z]{2}$",
             "editor": "select",
             "enum": ["US", "GB", "CA", "AU", "DE", "FR", "JP", "BR", "IN", "MX"],
             "enumTitles": ["United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Japan", "Brazil", "India", "Mexico"]
