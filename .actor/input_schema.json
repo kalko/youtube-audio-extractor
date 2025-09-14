@@ -1,0 +1,41 @@
+{
+  "title": "YouTube Proxy Actor Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "youtubeUrl": {
+      "title": "YouTube Video URL",
+      "type": "string",
+      "description": "YouTube video URL to extract (e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
+      "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    },
+    "proxyUrl": {
+      "title": "Generic Proxy URL", 
+      "type": "string",
+      "description": "Any URL to proxy through with IP rotation (e.g., https://httpbin.org/ip)",
+      "example": "https://httpbin.org/ip"
+    },
+    "useResidentialProxy": {
+      "title": "Use Residential Proxy",
+      "type": "boolean",
+      "description": "Use residential IPs for better stealth (recommended for YouTube)",
+      "default": true
+    },
+    "countryCode": {
+      "title": "Proxy Country Code",
+      "type": "string", 
+      "description": "Country code for proxy (US, GB, CA, AU, DE, etc.)",
+      "default": "US",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "maxRetries": {
+      "title": "Maximum Retries",
+      "type": "integer",
+      "description": "Maximum number of extraction attempts with different IPs",
+      "default": 3,
+      "minimum": 1,
+      "maximum": 10
+    }
+  },
+  "required": []
+}
