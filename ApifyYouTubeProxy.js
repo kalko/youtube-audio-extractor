@@ -128,9 +128,15 @@ export class ApifyYouTubeProxy {
             throw new Error('No audio formats available')
         }
 
-        // Select best audio format (prioritized in extractAudioOnlyFormats)
+        // Select best audio format (should be AAC itag 140)
         const bestAudioFormat = audioFormats[0]
-        console.log(`🎵 Downloading audio: ${bestAudioFormat.mimeType} (${bestAudioFormat.audioQuality})`)
+
+        // Validate we have AAC format for Whisper compatibility
+        if (!bestAudioFormat || bestAudioFormat.itag !== 140) {
+            throw new Error('No AAC audio format (itag 140) available - required for Whisper processing')
+        }
+
+        console.log(`🎵 Downloading AAC audio: ${bestAudioFormat.mimeType} (${bestAudioFormat.audioQuality})`)
 
         try {
             // Download audio stream
@@ -142,13 +148,8 @@ export class ApifyYouTubeProxy {
                 throw new Error(`Failed to download audio: HTTP ${audioResponse.statusCode}`)
             }
 
-            // Generate R2 object key
-            const fileExtension = bestAudioFormat.mimeType.includes('mp4')
-                ? 'mp4'
-                : bestAudioFormat.mimeType.includes('webm')
-                ? 'webm'
-                : 'audio'
-            const objectKey = `youtube-audio/${videoId}/${Date.now()}.${fileExtension}`
+            // Generate R2 object key: temp-audio/{videoId}.mp4
+            const objectKey = `temp-audio/${videoId}.mp4`
 
             console.log(`☁️ Uploading to R2: ${objectKey}`)
 
@@ -159,14 +160,17 @@ export class ApifyYouTubeProxy {
                     Bucket: bucketName,
                     Key: objectKey,
                     Body: audioResponse.body,
-                    ContentType: bestAudioFormat.mimeType,
+                    ContentType: 'audio/mp4',
                     Metadata: {
                         videoId: videoId,
                         title: videoInfo?.title || 'Unknown',
-                        audioQuality: bestAudioFormat.audioQuality,
-                        bitrate: bestAudioFormat.bitrate?.toString() || 'unknown',
                         duration: bestAudioFormat.approxDurationMs || 'unknown',
+                        format: 'aac-128k-whisper-ready',
+                        processingStatus: 'ready-for-transcription',
+                        bitrate: bestAudioFormat.bitrate?.toString() || '128000',
+                        codec: 'mp4a.40.2',
                         extractedAt: new Date().toISOString(),
+                        whisperOptimized: 'true',
                     },
                 },
             })
@@ -174,21 +178,30 @@ export class ApifyYouTubeProxy {
             const uploadResult = await upload.done()
             console.log(`✅ Audio uploaded successfully to R2`)
 
-            // Return comprehensive result
+            // Return comprehensive result optimized for Whisper processing
             return {
                 success: true,
                 videoId,
                 videoInfo,
                 audioFormat: bestAudioFormat,
+                whisperReady: {
+                    audioUrl: `https://${bucketName}.r2.dev/${objectKey}`,
+                    format: 'audio/mp4',
+                    codec: 'aac',
+                    bitrate: bestAudioFormat.bitrate || 128000,
+                    duration: bestAudioFormat.approxDurationMs,
+                    sizeBytes: bestAudioFormat.contentLength,
+                    filename: `${videoId}.mp4`,
+                },
                 r2Upload: {
                     bucket: bucketName,
                     key: objectKey,
-                    url: `https://${bucketName}.r2.dev/${objectKey}`, // Adjust based on your R2 domain
+                    url: `https://${bucketName}.r2.dev/${objectKey}`,
                     etag: uploadResult.ETag,
                     location: uploadResult.Location,
                 },
                 extractedAt: new Date().toISOString(),
-                method: 'audio-only-r2-upload',
+                method: 'aac-whisper-optimized',
             }
         } catch (error) {
             console.error(`❌ Audio download/upload failed: ${error.message}`)
@@ -334,49 +347,34 @@ export class ApifyYouTubeProxy {
         throw new Error('No player response found')
     }
 
-    // Extract and prioritize audio-only formats
+    // Extract and prioritize audio-only formats - AAC ONLY for Whisper compatibility
     extractAudioOnlyFormats(streamingData) {
         const audioFormats = []
 
-        // Check adaptive formats for audio-only streams
+        // Check adaptive formats for AAC audio-only streams (itag 140)
         if (streamingData.adaptiveFormats) {
             for (const format of streamingData.adaptiveFormats) {
-                // Audio-only formats (no video)
-                if (format.mimeType && format.mimeType.startsWith('audio/')) {
+                // ONLY extract AAC format (itag 140) for Whisper processing
+                if (format.mimeType && format.mimeType.startsWith('audio/mp4') && format.itag === 140) {
                     const audioFormat = {
                         itag: format.itag,
                         url: format.url,
                         mimeType: format.mimeType,
-                        audioQuality: format.audioQuality || 'unknown',
-                        bitrate: format.bitrate || format.averageBitrate,
+                        audioQuality: format.audioQuality || 'AUDIO_QUALITY_MEDIUM',
+                        bitrate: format.bitrate || format.averageBitrate || 128000,
                         contentLength: format.contentLength,
                         approxDurationMs: format.approxDurationMs,
-                        codec: this.extractCodec(format.mimeType),
+                        codec: 'mp4a.40.2', // AAC codec
+                        whisperReady: true, // Flag for processing pipeline
                     }
 
-                    // Prioritize by quality and codec
-                    if (format.itag === 140) {
-                        // AAC 128kbps - most compatible
-                        audioFormats.unshift(audioFormat)
-                    } else if (format.itag === 251) {
-                        // Opus - high quality
-                        audioFormats.push(audioFormat)
-                    } else if (format.itag === 249 || format.itag === 250) {
-                        // Opus lower quality
-                        audioFormats.push(audioFormat)
-                    } else {
-                        audioFormats.push(audioFormat)
-                    }
+                    audioFormats.push(audioFormat)
+                    break // Only need the AAC format
                 }
             }
         }
 
         return audioFormats
-    }
-
-    extractCodec(mimeType) {
-        const codecMatch = mimeType.match(/codecs="([^"]+)"/)
-        return codecMatch ? codecMatch[1] : 'unknown'
     }
 
     async extractViaMobileAPI(videoId) {
