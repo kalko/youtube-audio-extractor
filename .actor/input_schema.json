@@ -30,8 +30,30 @@
             "default": "US",
             "example": "US",
             "editor": "select",
-            "enum": ["US", "GB", "CA", "AU", "DE", "FR", "IT", "ES", "NL", "SE"],
-            "enumTitles": ["United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain", "Netherlands", "Sweden"]
+            "enum": [
+                "US",
+                "GB",
+                "CA",
+                "AU",
+                "DE",
+                "FR",
+                "IT",
+                "ES",
+                "NL",
+                "SE"
+            ],
+            "enumTitles": [
+                "United States",
+                "United Kingdom",
+                "Canada",
+                "Australia",
+                "Germany",
+                "France",
+                "Italy",
+                "Spain",
+                "Netherlands",
+                "Sweden"
+            ]
         },
         "maxRetries": {
             "title": "Max Retries",
