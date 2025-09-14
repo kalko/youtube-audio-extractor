@@ -28,8 +28,10 @@
       "deno.json"
     ],
     "exclude": [
-      "test.ts",
-      "example-*.js",
+      "tests/**",
+      "enhanced-nodejs-integration.js",
+      "example-nodejs-integration.js",
+      "README-new.md",
       "*.md"
     ]
   }
