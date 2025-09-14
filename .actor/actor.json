@@ -1,34 +1,34 @@
 {
-  "actorSpecification": 1,
-  "name": "youtube-proxy-actor",
-  "title": "YouTube Proxy with IP Rotation",
-  "description": "Extract YouTube videos and proxy requests with automatic IP rotation and anti-bot detection",
-  "version": "1.0.0",
-  "buildTag": "latest",
-  "environmentVariables": {},
-  "dockerfile": "./Dockerfile",
-  "readme": "./README.md",
-  "input": "./.actor/input_schema.json",
-  "storages": {
-    "dataset": {
-      "actorSpecification": 1,
-      "title": "Extracted Results",
-      "description": "Results from YouTube extraction or proxy requests",
-      "views": {
-        "overview": {
-          "title": "Overview",
-          "transformation": {
-            "fields": [
-              "videoId",
-              "url", 
-              "method",
-              "extractedAt",
-              "success",
-              "proxyInfo"
-            ]
-          }
+    "actorSpecification": 1,
+    "name": "youtube-proxy-actor",
+    "title": "YouTube Proxy with IP Rotation",
+    "description": "Extract YouTube videos and proxy requests with automatic IP rotation and anti-bot detection",
+    "version": "1.0.0",
+    "buildTag": "latest",
+    "environmentVariables": {},
+    "dockerfile": "./Dockerfile",
+    "readme": "./README.md",
+    "input": "./.actor/input_schema.json",
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "title": "Extracted Results",
+            "description": "Results from YouTube extraction or proxy requests",
+            "views": {
+                "overview": {
+                    "title": "Overview",
+                    "transformation": {
+                        "fields": [
+                            "videoId",
+                            "url",
+                            "method",
+                            "extractedAt",
+                            "success",
+                            "proxyInfo"
+                        ]
+                    }
+                }
+            }
         }
-      }
     }
-  }
 }

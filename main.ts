@@ -7,7 +7,8 @@ import { YouTubeParser } from './youtube-parser.ts'
 // Browser fingerprint profiles for maximum stealth with edge location hints
 const BROWSER_PROFILES = [
     {
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        userAgent:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         acceptLanguage: 'en-US,en;q=0.9',
         platform: 'Win32',
         vendor: 'Google Inc.',
@@ -17,10 +18,11 @@ const BROWSER_PROFILES = [
         screenRes: '1920x1080',
         edgeHint: 'us-east1',
         cloudflareCountry: 'US',
-        cfIpCountry: 'US'
+        cfIpCountry: 'US',
     },
     {
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        userAgent:
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         acceptLanguage: 'en-US,en;q=0.9',
         platform: 'MacIntel',
         vendor: 'Google Inc.',
@@ -30,10 +32,11 @@ const BROWSER_PROFILES = [
         screenRes: '2560x1440',
         edgeHint: 'us-west1',
         cloudflareCountry: 'US',
-        cfIpCountry: 'US'
+        cfIpCountry: 'US',
     },
     {
-        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        userAgent:
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         acceptLanguage: 'en-GB,en;q=0.9',
         platform: 'Linux x86_64',
         vendor: 'Google Inc.',
@@ -43,7 +46,7 @@ const BROWSER_PROFILES = [
         screenRes: '1920x1080',
         edgeHint: 'europe-west1',
         cloudflareCountry: 'GB',
-        cfIpCountry: 'GB'
+        cfIpCountry: 'GB',
     },
     {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
@@ -56,7 +59,7 @@ const BROWSER_PROFILES = [
         screenRes: '1366x768',
         edgeHint: 'australia-southeast1',
         cloudflareCountry: 'AU',
-        cfIpCountry: 'AU'
+        cfIpCountry: 'AU',
     },
     {
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0',
@@ -69,8 +72,8 @@ const BROWSER_PROFILES = [
         screenRes: '1440x900',
         edgeHint: 'asia-southeast1',
         cloudflareCountry: 'JP',
-        cfIpCountry: 'JP'
-    }
+        cfIpCountry: 'JP',
+    },
 ]
 
 // Rotating proxy configurations to leverage different edge locations
@@ -79,7 +82,7 @@ const EDGE_REGIONS = [
     { region: 'us-west1', continent: 'NA' },
     { region: 'europe-west1', continent: 'EU' },
     { region: 'asia-southeast1', continent: 'AS' },
-    { region: 'australia-southeast1', continent: 'OC' }
+    { region: 'australia-southeast1', continent: 'OC' },
 ]
 
 class SophisticatedProxy {
@@ -91,17 +94,17 @@ class SophisticatedProxy {
         const profile = this.getRandomProfile()
         const sessionId = Math.random().toString(36).substring(2, 15)
         const requestId = Math.random().toString(36).substring(2, 10)
-        
+
         // Simulate different edge locations by adding region-specific headers
         const edgeLocation = EDGE_REGIONS[Math.floor(Math.random() * EDGE_REGIONS.length)]
-        
+
         return {
             profile,
             sessionId,
             requestId,
             edgeLocation,
             realIP: request.headers.get('cf-connecting-ip') || 'unknown',
-            edgeIP: request.headers.get('cf-ray') || 'unknown'
+            edgeIP: request.headers.get('cf-ray') || 'unknown',
         }
     }
 
@@ -111,10 +114,13 @@ class SophisticatedProxy {
 
         // Core browser headers
         headers.set('User-Agent', profile.userAgent)
-        headers.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7')
+        headers.set(
+            'Accept',
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        )
         headers.set('Accept-Language', profile.acceptLanguage)
         headers.set('Accept-Encoding', 'gzip, deflate, br')
-        
+
         // Advanced fingerprinting headers
         if (profile.secChUa) {
             headers.set('sec-ch-ua', profile.secChUa)
@@ -133,7 +139,7 @@ class SophisticatedProxy {
         // Anti-detection headers
         headers.set('DNT', '1')
         headers.set('Connection', 'keep-alive')
-        
+
         // Geographic routing hints to force different edge locations
         headers.set('CF-IPCountry', profile.cfIpCountry)
         headers.set('CloudFlare-Country', profile.cloudflareCountry)
@@ -141,12 +147,12 @@ class SophisticatedProxy {
         headers.set('X-Edge-Location', profile.edgeHint)
         headers.set('X-Deployment-Region', profile.edgeHint)
         headers.set('Accept-Language', profile.acceptLanguage) // Override with profile-specific language
-        
+
         // Vary headers based on target
         if (targetUrl.includes('youtube.com')) {
             headers.set('Purpose', 'prefetch')
             headers.set('X-Requested-With', '')
-            
+
             // YouTube-specific headers that look more natural
             if (Math.random() > 0.5) {
                 headers.set('x-youtube-client-name', '1')
@@ -156,12 +162,13 @@ class SophisticatedProxy {
 
         // Add referer based on target domain to look more natural
         const targetDomain = new URL(targetUrl).hostname
-        if (Math.random() > 0.3) { // 70% chance to add referer
+        if (Math.random() > 0.3) {
+            // 70% chance to add referer
             const referers = [
                 `https://www.google.com/search?q=${encodeURIComponent(targetDomain)}`,
                 `https://${targetDomain}`,
                 'https://www.google.com/',
-                'https://duckduckgo.com/'
+                'https://duckduckgo.com/',
             ]
             headers.set('Referer', referers[Math.floor(Math.random() * referers.length)])
         }
@@ -171,17 +178,17 @@ class SophisticatedProxy {
 
     private static async addNaturalDelay(targetUrl: string): Promise<void> {
         let baseDelay = 800 // Base delay in ms
-        
+
         // Increase delay for YouTube to look more human
         if (targetUrl.includes('youtube.com')) {
             baseDelay = 2000
         }
-        
+
         // Add random jitter (±50%)
         const jitter = (Math.random() - 0.5) * 0.5 * baseDelay
         const totalDelay = baseDelay + jitter
-        
-        await new Promise(resolve => setTimeout(resolve, Math.max(500, totalDelay)))
+
+        await new Promise((resolve) => setTimeout(resolve, Math.max(500, totalDelay)))
     }
 
     // Force different edge locations using various routing strategies
@@ -189,17 +196,23 @@ class SophisticatedProxy {
         // Strategy 1: Change process.env to hint at different deployment regions
         const regions = ['us-east1', 'us-west1', 'europe-west1', 'asia-southeast1', 'australia-southeast1']
         const randomRegion = regions[Math.floor(Math.random() * regions.length)]
-        
+
         // Strategy 2: Use deployment hints via special headers and URL parameters
         const deploymentHints = {
-            'DENO_DEPLOYMENT_ID': Math.random().toString(36).substring(2, 15),
-            'DENO_REGION': randomRegion,
-            'CF_RAY': `${Math.random().toString(36).substring(2, 15)}-${randomRegion.split('-')[0].toUpperCase()}`,
-            'CF_IPCOUNTRY': randomRegion.includes('us') ? 'US' : 
-                           randomRegion.includes('europe') ? 'GB' :
-                           randomRegion.includes('asia') ? 'JP' : 'AU'
+            DENO_DEPLOYMENT_ID: Math.random().toString(36).substring(2, 15),
+            DENO_REGION: randomRegion,
+            CF_RAY: `${Math.random().toString(36).substring(2, 15)}-${randomRegion
+                .split('-')[0]
+                .toUpperCase()}`,
+            CF_IPCOUNTRY: randomRegion.includes('us')
+                ? 'US'
+                : randomRegion.includes('europe')
+                ? 'GB'
+                : randomRegion.includes('asia')
+                ? 'JP'
+                : 'AU',
         }
-        
+
         // Strategy 3: Force DNS resolution variations by adding cache-busting
         const timestamp = Date.now()
         console.log(`🔄 Forcing edge rotation to ${randomRegion} at ${timestamp}`)
@@ -208,10 +221,12 @@ class SophisticatedProxy {
     static async proxyRequest(request: Request, targetUrl: string): Promise<Response> {
         // Force edge rotation before each request
         this.forceEdgeRotation()
-        
+
         const fingerprint = this.getFingerprint(request)
-        
-        console.log(`🌐 Proxy Request via Edge Location: ${fingerprint.edgeLocation.region} (${fingerprint.edgeLocation.continent})`)
+
+        console.log(
+            `🌐 Proxy Request via Edge Location: ${fingerprint.edgeLocation.region} (${fingerprint.edgeLocation.continent})`,
+        )
         console.log(`🎭 Using Profile: ${fingerprint.profile.platform} | Session: ${fingerprint.sessionId}`)
         console.log(`📍 Client IP: ${fingerprint.realIP} | Edge: ${fingerprint.edgeIP}`)
         console.log(`🎯 Target: ${targetUrl}`)
@@ -237,39 +252,38 @@ class SophisticatedProxy {
 
         try {
             const startTime = Date.now()
-            
+
             // Add multiple retry attempts with different approaches
             let response!: globalThis.Response
             let attempt = 0
             const maxAttempts = 3
-            
+
             while (attempt < maxAttempts) {
                 attempt++
-                
+
                 try {
                     console.log(`🔄 Attempt ${attempt}/${maxAttempts} for ${targetUrl}`)
-                    
+
                     // Vary the approach slightly on retries
                     if (attempt > 1) {
-                        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000))
+                        await new Promise((resolve) => setTimeout(resolve, 2000 + Math.random() * 3000))
                         this.addRetryVariations(proxyHeaders, attempt)
                     }
-                    
+
                     response = await fetch(targetUrl, {
                         method: request.method,
                         headers: proxyHeaders,
                         body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
-                        redirect: 'follow'
+                        redirect: 'follow',
                     })
-                    
+
                     // Check if we got blocked
                     if (response.status === 429 || response.status === 403) {
                         console.log(`⚠️ Got ${response.status}, retrying with different approach...`)
                         continue
                     }
-                    
+
                     break
-                    
                 } catch (fetchError) {
                     console.log(`⚠️ Fetch attempt ${attempt} failed: ${(fetchError as Error).message}`)
                     if (attempt === maxAttempts) {
@@ -279,25 +293,30 @@ class SophisticatedProxy {
             }
 
             const responseTime = Date.now() - startTime
-            
+
             // Check response for bot detection indicators
             const responseText = await response.text()
             this.checkForBotDetection(responseText, targetUrl)
-            
-            console.log(`⚡ Response: ${response.status} in ${responseTime}ms | Size: ${responseText.length} chars`)
+
+            console.log(
+                `⚡ Response: ${response.status} in ${responseTime}ms | Size: ${responseText.length} chars`,
+            )
 
             // Create enhanced response headers with actual IP information
             const responseHeaders = new Headers()
-            
+
             // Copy original response headers
             for (const [key, value] of response.headers.entries()) {
                 responseHeaders.set(key, value)
             }
-            
+
             // CORS headers
             responseHeaders.set('Access-Control-Allow-Origin', '*')
             responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-            responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, User-Agent, X-Forwarded-For')
+            responseHeaders.set(
+                'Access-Control-Allow-Headers',
+                'Content-Type, Authorization, User-Agent, X-Forwarded-For',
+            )
             responseHeaders.set('Access-Control-Expose-Headers', 'X-Proxy-*, X-Edge-*, X-Response-Time')
 
             // Enhanced proxy identification headers
@@ -317,49 +336,54 @@ class SophisticatedProxy {
             }
 
             // Performance headers
-            responseHeaders.set('X-Proxy-Performance', JSON.stringify({
-                responseTime,
-                edgeLocation: fingerprint.edgeLocation.region,
-                profileUsed: fingerprint.profile.platform,
-                targetDomain: new URL(targetUrl).hostname,
-                retryAttempts: attempt,
-                botDetectionPassed: true
-            }))
+            responseHeaders.set(
+                'X-Proxy-Performance',
+                JSON.stringify({
+                    responseTime,
+                    edgeLocation: fingerprint.edgeLocation.region,
+                    profileUsed: fingerprint.profile.platform,
+                    targetDomain: new URL(targetUrl).hostname,
+                    retryAttempts: attempt,
+                    botDetectionPassed: true,
+                }),
+            )
 
             return new Response(responseText, {
                 status: response.status,
                 statusText: response.statusText,
-                headers: responseHeaders
+                headers: responseHeaders,
             })
-
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown proxy error'
             console.error(`❌ Proxy Error [${fingerprint.requestId}]:`, errorMessage)
 
-            return new Response(JSON.stringify({
-                error: 'Sophisticated proxy request failed',
-                message: errorMessage,
-                requestId: fingerprint.requestId,
-                sessionId: fingerprint.sessionId,
-                edgeLocation: fingerprint.edgeLocation,
-                targetUrl,
-                timestamp: new Date().toISOString(),
-                suggestions: [
-                    'Target server might be blocking requests',
-                    'Try again with a different edge location',
-                    'Check if the target URL is accessible',
-                    'Consider adding custom headers if needed'
-                ]
-            }), {
-                status: 500,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'X-Proxy-Status': 'error',
-                    'X-Proxy-Request-ID': fingerprint.requestId,
-                    'X-Edge-Location': fingerprint.edgeLocation.region
-                }
-            })
+            return new Response(
+                JSON.stringify({
+                    error: 'Sophisticated proxy request failed',
+                    message: errorMessage,
+                    requestId: fingerprint.requestId,
+                    sessionId: fingerprint.sessionId,
+                    edgeLocation: fingerprint.edgeLocation,
+                    targetUrl,
+                    timestamp: new Date().toISOString(),
+                    suggestions: [
+                        'Target server might be blocking requests',
+                        'Try again with a different edge location',
+                        'Check if the target URL is accessible',
+                        'Consider adding custom headers if needed',
+                    ],
+                }),
+                {
+                    status: 500,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'X-Proxy-Status': 'error',
+                        'X-Proxy-Request-ID': fingerprint.requestId,
+                        'X-Edge-Location': fingerprint.edgeLocation.region,
+                    },
+                },
+            )
         }
     }
 
@@ -372,16 +396,19 @@ class SophisticatedProxy {
             ['x-youtube-page-label', 'youtube.desktop.web_20240914_01_RC00'],
             ['x-youtube-utc-offset', '-420'],
             ['x-youtube-time-zone', fingerprint.profile.timezone],
-            ['x-youtube-ad-signals', 'dt=1726326430748&flash=0&frm&u_tz=-420&u_his=1&u_java&u_h=1080&u_w=1920&u_ah=1040&u_aw=1920&u_cd=24&bc=31&bih=969&biw=1905&brdim=0%2C0%2C0%2C0%2C1920%2C0%2C1920%2C1040%2C1920%2C969&vis=1&wgl=true&ca_type=image'],
+            [
+                'x-youtube-ad-signals',
+                'dt=1726326430748&flash=0&frm&u_tz=-420&u_his=1&u_java&u_h=1080&u_w=1920&u_ah=1040&u_aw=1920&u_cd=24&bc=31&bih=969&biw=1905&brdim=0%2C0%2C0%2C0%2C1920%2C0%2C1920%2C1040%2C1920%2C969&vis=1&wgl=true&ca_type=image',
+            ],
         ]
-        
+
         // Randomly add some headers (70% chance each)
         for (const [key, value] of ytHeaders) {
             if (Math.random() > 0.3) {
                 headers.set(key, value)
             }
         }
-        
+
         // Add session cookies simulation
         const sessionCookies = [
             'VISITOR_INFO1_LIVE=ABC123DEF456',
@@ -389,9 +416,11 @@ class SophisticatedProxy {
             'YSC=' + Math.random().toString(36).substring(2, 15),
             'CONSENT=PENDING+' + Math.floor(Date.now() / 1000),
         ]
-        
+
         const existingCookies = headers.get('Cookie') || ''
-        const newCookies = existingCookies ? `${existingCookies}; ${sessionCookies.join('; ')}` : sessionCookies.join('; ')
+        const newCookies = existingCookies
+            ? `${existingCookies}; ${sessionCookies.join('; ')}`
+            : sessionCookies.join('; ')
         headers.set('Cookie', newCookies)
     }
 
@@ -403,9 +432,9 @@ class SophisticatedProxy {
             () => headers.set('X-Requested-With', ''),
             () => headers.set('Upgrade-Insecure-Requests', attempt % 2 === 0 ? '1' : '0'),
         ]
-        
+
         // Apply random variations
-        variations.forEach(variation => {
+        variations.forEach((variation) => {
             if (Math.random() > 0.5) {
                 variation()
             }
@@ -424,11 +453,11 @@ class SophisticatedProxy {
             'too many requests',
             'verification required',
             'please complete',
-            'security check'
+            'security check',
         ]
-        
+
         const lowerText = responseText.toLowerCase()
-        
+
         for (const indicator of botIndicators) {
             if (lowerText.includes(indicator)) {
                 console.log(`🤖 Bot detection indicator found: "${indicator}" in response from ${targetUrl}`)
@@ -445,9 +474,9 @@ export default {
         const rotationId = Math.random().toString(36).substring(2, 15)
         const regions = ['us-east1', 'us-west1', 'europe-west1', 'asia-southeast1', 'australia-southeast1']
         const targetRegion = regions[Math.floor(Math.random() * regions.length)]
-        
+
         console.log(`🌍 EDGE ROTATION ${rotationId}: Forcing region ${targetRegion}`)
-        
+
         // Add cache-busting and region hints to force different edge execution
         const url = new URL(request.url)
         url.searchParams.set('_edge_rotation', rotationId)
@@ -461,9 +490,10 @@ export default {
                 headers: {
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, CONNECT',
-                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, User-Agent, X-Forwarded-For, X-Custom-*, Proxy-Authorization',
+                    'Access-Control-Allow-Headers':
+                        'Content-Type, Authorization, User-Agent, X-Forwarded-For, X-Custom-*, Proxy-Authorization',
                     'Access-Control-Max-Age': '86400',
-                }
+                },
             })
         }
 
@@ -479,7 +509,7 @@ export default {
 
         // Fall back to REST API mode for compatibility
         return handleRestAPIMode(request)
-    }
+    },
 }
 
 // Real HTTP proxy CONNECT handler for HTTPS tunneling
@@ -487,28 +517,28 @@ async function handleConnectProxy(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const targetHost = url.hostname
     const targetPort = url.port || '443'
-    
+
     console.log(`🔒 CONNECT proxy tunnel to: ${targetHost}:${targetPort}`)
-    
+
     try {
         // Establish connection to target
         const targetUrl = `https://${targetHost}:${targetPort}`
-        
+
         // For Deno Deploy, we can't create raw TCP connections,
         // but we can simulate the proxy behavior for HTTP/HTTPS requests
         return new Response(null, {
             status: 200,
             statusText: 'Connection established',
             headers: {
-                'Proxy-Agent': 'Sophisticated-Deno-Proxy/1.0'
-            }
+                'Proxy-Agent': 'Sophisticated-Deno-Proxy/1.0',
+            },
         })
     } catch (error) {
         return new Response('Bad Gateway', {
             status: 502,
             headers: {
-                'Content-Type': 'text/plain'
-            }
+                'Content-Type': 'text/plain',
+            },
         })
     }
 }
@@ -519,7 +549,7 @@ async function handleDirectProxy(request: Request): Promise<Response> {
     // Format: http://proxy-server/http://target-url or direct target URL
     const requestUrl = request.url
     let targetUrl: string
-    
+
     if (requestUrl.includes('://') && requestUrl.split('://').length > 2) {
         // Format: http://proxy-server/http://target-url
         const parts = requestUrl.split('://')
@@ -531,22 +561,25 @@ async function handleDirectProxy(request: Request): Promise<Response> {
         // Direct target URL
         targetUrl = requestUrl
     }
-    
+
     console.log(`🌐 Direct proxy request to: ${targetUrl}`)
-    
+
     return SophisticatedProxy.proxyRequest(request, targetUrl)
 }
 
 // Check if this is a direct proxy request
 function isDirectProxyRequest(request: Request): boolean {
     const url = new URL(request.url)
-    
+
     // Check if URL contains a full URL as path (proxy behavior)
     const path = url.pathname + url.search
-    
-    return path.includes('http://') || path.includes('https://') || 
-           request.headers.has('Proxy-Authorization') ||
-           request.headers.has('Proxy-Connection')
+
+    return (
+        path.includes('http://') ||
+        path.includes('https://') ||
+        request.headers.has('Proxy-Authorization') ||
+        request.headers.has('Proxy-Connection')
+    )
 }
 
 // REST API mode (existing functionality)
@@ -562,35 +595,38 @@ async function handleRestAPIMode(request: Request): Promise<Response> {
     const forceRegion = url.searchParams.get('region')
 
     if (!targetUrl) {
-        return new Response(JSON.stringify({
-            error: 'Missing url parameter',
-            usage: 'Sophisticated proxy with rotating IPs via Deno Deploy edge network',
-            modes: {
-                rest_api: 'GET /?url=https://target.com (current mode)',
-                http_proxy: 'Use as HTTP proxy: --proxy https://examples-hello-world.kalko.deno.net',
-                https_proxy: 'Use as HTTPS proxy with CONNECT method'
+        return new Response(
+            JSON.stringify({
+                error: 'Missing url parameter',
+                usage: 'Sophisticated proxy with rotating IPs via Deno Deploy edge network',
+                modes: {
+                    rest_api: 'GET /?url=https://target.com (current mode)',
+                    http_proxy: 'Use as HTTP proxy: --proxy https://examples-hello-world.kalko.deno.net',
+                    https_proxy: 'Use as HTTPS proxy with CONNECT method',
+                },
+                examples: {
+                    basic_proxy: `${url.origin}/?url=https://example.com`,
+                    youtube_extraction: `${url.origin}/?url=YOUTUBE_URL&extract_video=true`,
+                    cookie_extraction: `${url.origin}/?url=YOUTUBE_URL&extract_cookies=true`,
+                    yt_dlp_usage: `yt-dlp --proxy ${url.origin} "YOUTUBE_URL"`,
+                },
+                features: [
+                    'Rotating browser fingerprints',
+                    'Different edge IPs on each request',
+                    'Advanced anti-detection',
+                    'YouTube-specific optimizations',
+                    'Real HTTP proxy support',
+                    'HTTPS CONNECT tunneling',
+                ],
+            }),
+            {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                },
             },
-            examples: {
-                basic_proxy: `${url.origin}/?url=https://example.com`,
-                youtube_extraction: `${url.origin}/?url=YOUTUBE_URL&extract_video=true`,
-                cookie_extraction: `${url.origin}/?url=YOUTUBE_URL&extract_cookies=true`,
-                yt_dlp_usage: `yt-dlp --proxy ${url.origin} "YOUTUBE_URL"`
-            },
-            features: [
-                'Rotating browser fingerprints',
-                'Different edge IPs on each request',
-                'Advanced anti-detection',
-                'YouTube-specific optimizations',
-                'Real HTTP proxy support',
-                'HTTPS CONNECT tunneling'
-            ]
-        }), {
-            status: 400,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        })
+        )
     }
 
     try {
@@ -604,67 +640,79 @@ async function handleRestAPIMode(request: Request): Promise<Response> {
         if (extractVideo && isYouTube) {
             const videoId = YouTubeParser.extractVideoId(targetUrl)
             if (!videoId) {
-                return new Response(JSON.stringify({
-                    error: 'Could not extract video ID from URL',
-                    targetUrl,
-                    supportedFormats: [
-                        'https://youtube.com/watch?v=VIDEO_ID',
-                        'https://youtu.be/VIDEO_ID',
-                        'https://youtube.com/embed/VIDEO_ID'
-                    ]
-                }), {
-                    status: 400,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*',
-                    }
-                })
+                return new Response(
+                    JSON.stringify({
+                        error: 'Could not extract video ID from URL',
+                        targetUrl,
+                        supportedFormats: [
+                            'https://youtube.com/watch?v=VIDEO_ID',
+                            'https://youtu.be/VIDEO_ID',
+                            'https://youtube.com/embed/VIDEO_ID',
+                        ],
+                    }),
+                    {
+                        status: 400,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                        },
+                    },
+                )
             }
 
             console.log(`📹 Extracting video info for: ${videoId}`)
-            
+
             try {
                 const videoInfo = await YouTubeParser.extractVideoInfo(videoId)
 
-                return new Response(JSON.stringify({
-                    success: true,
-                    videoId,
-                    videoInfo,
-                    extractedAt: new Date().toISOString(),
-                    proxy: {
-                        method: 'sophisticated_edge_extraction',
-                        edgeNetwork: 'deno_deploy_global'
-                    }
-                }), {
-                    status: 200,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*',
-                        'X-Video-Extracted': 'true',
-                        'X-Video-ID': videoId,
-                    }
-                })
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        videoId,
+                        videoInfo,
+                        extractedAt: new Date().toISOString(),
+                        proxy: {
+                            method: 'sophisticated_edge_extraction',
+                            edgeNetwork: 'deno_deploy_global',
+                        },
+                    }),
+                    {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                            'X-Video-Extracted': 'true',
+                            'X-Video-ID': videoId,
+                        },
+                    },
+                )
             } catch (extractionError) {
-                const errorMsg = extractionError instanceof Error ? extractionError.message : 'Unknown extraction error'
+                const errorMsg =
+                    extractionError instanceof Error ? extractionError.message : 'Unknown extraction error'
                 console.error(`❌ Video extraction failed for ${videoId}:`, errorMsg)
-                
-                return new Response(JSON.stringify({
-                    error: 'Video extraction failed',
-                    message: errorMsg,
-                    videoId,
-                    targetUrl,
-                    timestamp: new Date().toISOString(),
-                    fallback: {
-                        suggestion: 'Use sophisticated proxy mode instead',
-                        proxyUrl: `${url.origin}/?url=${encodeURIComponent(targetUrl)}&extract_cookies=true`
-                    }
-                }), {
-                    status: 500,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                })
+
+                return new Response(
+                    JSON.stringify({
+                        error: 'Video extraction failed',
+                        message: errorMsg,
+                        videoId,
+                        targetUrl,
+                        timestamp: new Date().toISOString(),
+                        fallback: {
+                            suggestion: 'Use sophisticated proxy mode instead',
+                            proxyUrl: `${url.origin}/?url=${encodeURIComponent(
+                                targetUrl,
+                            )}&extract_cookies=true`,
+                        },
+                    }),
+                    {
+                        status: 500,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                        },
+                    },
+                )
             }
         }
 
@@ -679,29 +727,31 @@ async function handleRestAPIMode(request: Request): Promise<Response> {
         }
 
         return proxyResponse
-
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error(`❌ Sophisticated proxy error:`, errorMessage)
 
-        return new Response(JSON.stringify({
-            error: 'Sophisticated proxy system error',
-            message: errorMessage,
-            targetUrl,
-            timestamp: new Date().toISOString(),
-            edgeNetwork: 'deno_deploy_global',
-            troubleshooting: {
-                checkTarget: 'Verify the target URL is accessible',
-                retryAdvice: 'Try again - different edge location will be used',
-                supportedSites: 'YouTube, most public APIs and websites'
-            }
-        }), {
-            status: 500,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json',
-                'X-Proxy-Status': 'error'
-            }
-        })
+        return new Response(
+            JSON.stringify({
+                error: 'Sophisticated proxy system error',
+                message: errorMessage,
+                targetUrl,
+                timestamp: new Date().toISOString(),
+                edgeNetwork: 'deno_deploy_global',
+                troubleshooting: {
+                    checkTarget: 'Verify the target URL is accessible',
+                    retryAdvice: 'Try again - different edge location will be used',
+                    supportedSites: 'YouTube, most public APIs and websites',
+                },
+            }),
+            {
+                status: 500,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Content-Type': 'application/json',
+                    'X-Proxy-Status': 'error',
+                },
+            },
+        )
     }
 }
