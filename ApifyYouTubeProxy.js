@@ -110,15 +110,34 @@ export class ApifyYouTubeProxy {
                 console.log(`📡 Attempt ${index + 1}: ${method.name}`)
                 const result = await method()
 
-                if (result && (result.audioFormats?.length > 0 || result.url)) {
-                    // If we found audio formats and R2 upload is requested
-                    if (uploadToR2 && result.audioFormats?.length > 0 && this.r2Client) {
-                        console.log('🎵 Audio formats found, downloading and uploading to R2...')
-                        const r2Result = await this.downloadAndUploadAudio(result)
-                        return r2Result
+                // For R2 upload mode, we specifically need audio formats with URLs
+                if (uploadToR2) {
+                    if (result && result.audioFormats?.length > 0 && this.r2Client) {
+                        // Check if any audio format has a usable URL
+                        const hasUsableAudio = result.audioFormats.some((f) => f.url)
+                        if (hasUsableAudio) {
+                            console.log(
+                                '🎵 Audio formats with URLs found, downloading and uploading to R2...',
+                            )
+                            const r2Result = await this.downloadAndUploadAudio(result)
+                            return r2Result
+                        } else {
+                            console.log(
+                                '⚠️ Audio formats found but no usable URLs - continuing to next method...',
+                            )
+                            throw new Error('Audio formats have no usable URLs')
+                        }
+                    } else {
+                        console.log('⚠️ No audio formats found for R2 upload - continuing to next method...')
+                        throw new Error('No audio formats suitable for R2 upload')
                     }
-
-                    return result
+                } else {
+                    // Original logic for non-R2 mode
+                    if (result && (result.audioFormats?.length > 0 || result.url)) {
+                        return result
+                    } else {
+                        throw new Error('No usable result returned')
+                    }
                 }
             } catch (error) {
                 console.log(`❌ Method ${index + 1} failed: ${error.message}`)
