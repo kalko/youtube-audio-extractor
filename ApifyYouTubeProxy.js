@@ -385,6 +385,15 @@ export class ApifyYouTubeProxy {
                     // ✅ FALLBACK: Use combined formats (like original working version)
                     if (streamingData.formats && streamingData.formats.length > 0) {
                         console.log(`🔄 Falling back to combined formats (original working method)`)
+                        console.log(`🔍 Found ${streamingData.formats.length} combined formats`)
+
+                        // Debug: Show what combined formats we have
+                        streamingData.formats.forEach((f, i) => {
+                            console.log(
+                                `   ${i}: itag ${f.itag}, mimeType: ${f.mimeType}, hasUrl: ${!!f.url}`,
+                            )
+                        })
+
                         const format = streamingData.formats[0]
 
                         if (format.url) {
@@ -416,7 +425,11 @@ export class ApifyYouTubeProxy {
                                 method: 'watch-combined',
                                 extractedAt: new Date().toISOString(),
                             }
+                        } else {
+                            console.log(`❌ Combined format has no direct URL either - signature protected`)
                         }
+                    } else {
+                        console.log(`❌ No combined formats found`)
                     }
                 }
             } catch (parseError) {
