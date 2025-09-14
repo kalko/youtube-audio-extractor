@@ -394,7 +394,17 @@ export class ApifyYouTubeProxy {
 
         // Check adaptive formats for AAC audio-only streams (itag 140)
         if (streamingData.adaptiveFormats) {
+            console.log(`🔍 Searching through ${streamingData.adaptiveFormats.length} adaptive formats...`)
+            
             for (const format of streamingData.adaptiveFormats) {
+                // Debug: Log itag 140 specifically
+                if (format.itag === 140) {
+                    console.log(`🎯 Found itag 140! Details:`)
+                    console.log(`   mimeType: ${format.mimeType}`)
+                    console.log(`   hasUrl: ${!!format.url}`)
+                    console.log(`   audioQuality: ${format.audioQuality}`)
+                }
+                
                 // ONLY extract AAC format (itag 140) for Whisper processing
                 if (
                     format.mimeType &&
