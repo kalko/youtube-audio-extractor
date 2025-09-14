@@ -72,6 +72,19 @@ export class ApifyYouTubeProxy {
         console.log(`📍 Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
         console.log(`🎭 Profile: ${this.currentProfile.platform}`)
         console.log(`☁️ R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
+        
+        // Log current IP address
+        await this.logCurrentIP()
+    }
+
+    async logCurrentIP() {
+        try {
+            const ipResponse = await this.makeRequest('https://httpbin.org/ip')
+            const ipData = JSON.parse(ipResponse.body)
+            console.log(`🌍 Current IP: ${ipData.origin}`)
+        } catch (error) {
+            console.log(`⚠️ Could not determine IP: ${error.message}`)
+        }
     }
 
     async extractYouTubeVideo(videoUrl, uploadToR2 = false) {
@@ -141,7 +154,7 @@ export class ApifyYouTubeProxy {
         try {
             // Download audio stream
             const audioResponse = await this.makeRequest(bestAudioFormat.url, {
-                responseType: 'stream',
+                responseType: 'buffer', // Fix: use 'buffer' instead of 'stream' for gotScraping
             })
 
             if (audioResponse.statusCode !== 200) {
@@ -159,7 +172,7 @@ export class ApifyYouTubeProxy {
                 params: {
                     Bucket: bucketName,
                     Key: objectKey,
-                    Body: audioResponse.body,
+                    Body: audioResponse.body, // This will be a buffer now
                     ContentType: 'audio/mp4',
                     Metadata: {
                         videoId: videoId,
@@ -200,6 +213,11 @@ export class ApifyYouTubeProxy {
                     etag: uploadResult.ETag,
                     location: uploadResult.Location,
                 },
+                proxyInfo: {
+                    proxyUsed: !!this.proxyUrl,
+                    profile: this.currentProfile.platform,
+                    extractionMethod: 'watch-page-with-proxy'
+                },
                 extractedAt: new Date().toISOString(),
                 method: 'aac-whisper-optimized',
             }
@@ -224,6 +242,15 @@ export class ApifyYouTubeProxy {
             this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
 
             console.log(`🔄 IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
+            
+            // Log new IP after rotation
+            try {
+                const ipResponse = await this.makeRequest('https://httpbin.org/ip')
+                const ipData = JSON.parse(ipResponse.body)
+                console.log(`🌍 New IP: ${ipData.origin}`)
+            } catch (error) {
+                console.log(`⚠️ Could not verify new IP: ${error.message}`)
+            }
         } catch (error) {
             console.log(`⚠️ Failed to rotate proxy: ${error.message}`)
         }
