@@ -1,15 +1,43 @@
 {
-    "title": "YouTube Proxy Actor Input",
+    "title": "YouTube Audio Extractor Input",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "youtubeUrl": {
             "title": "YouTube Video URL",
             "type": "string",
-            "description": "YouTube video URL to extract (e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
+            "description": "YouTube video URL to extract audio from (e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
             "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             "editor": "textfield",
             "prefill": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        },
+        "r2BucketName": {
+            "title": "R2 Bucket Name",
+            "type": "string",
+            "description": "Cloudflare R2 bucket name to upload audio files (optional - if provided, audio will be uploaded)",
+            "example": "my-audio-bucket",
+            "editor": "textfield"
+        },
+        "r2AccountId": {
+            "title": "R2 Account ID",
+            "type": "string",
+            "description": "Cloudflare R2 Account ID (required for R2 upload)",
+            "example": "abc123def456",
+            "editor": "textfield"
+        },
+        "r2AccessKeyId": {
+            "title": "R2 Access Key ID",
+            "type": "string",
+            "description": "Cloudflare R2 Access Key ID (required for R2 upload)",
+            "example": "your-access-key-id",
+            "editor": "textfield"
+        },
+        "r2SecretAccessKey": {
+            "title": "R2 Secret Access Key",
+            "type": "string",
+            "description": "Cloudflare R2 Secret Access Key (required for R2 upload)",
+            "example": "your-secret-access-key",
+            "editor": "textfield"
         },
         "proxyUrl": {
             "title": "Generic Proxy URL",

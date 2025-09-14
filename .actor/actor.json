@@ -1,8 +1,8 @@
 {
     "actorSpecification": 1,
-    "name": "youtube-proxy-actor",
-    "title": "YouTube Proxy with IP Rotation",
-    "description": "Extract YouTube videos and proxy requests with automatic IP rotation and anti-bot detection",
+    "name": "youtube-audio-extractor",
+    "title": "YouTube Audio Extractor with R2 Upload",
+    "description": "Extract audio-only streams from YouTube videos and upload directly to Cloudflare R2 with IP rotation and anti-bot detection",
     "version": "1.0.0",
     "buildTag": "latest",
     "environmentVariables": {},

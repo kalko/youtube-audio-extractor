@@ -1,9 +1,12 @@
-// Apify Actor for YouTube Video Extraction with IP Rotation
+// Apify Actor for YouTube Audio Extraction with IP Rotation and R2 Upload
 // This runs as a serverless function with different IPs on each execution
 
 import { Actor } from 'apify'
 import { gotScraping } from 'got-scraping'
 import { HttpsProxyAgent } from 'https-proxy-agent'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { Upload } from '@aws-sdk/lib-storage'
+import { Readable } from 'stream'
 
 // Browser fingerprint profiles optimized for YouTube
 const BROWSER_PROFILES = [
@@ -34,23 +37,38 @@ class ApifyYouTubeProxy {
     constructor() {
         this.proxyUrl = null
         this.currentProfile = null
+        this.r2Client = null
     }
 
-    async initialize() {
+    async initialize(input = {}) {
         // Get Apify proxy configuration (automatic IP rotation)
         this.proxyUrl = Actor.getProxyUrl({
             groups: ['RESIDENTIAL'], // Use residential IPs for better stealth
-            countryCode: 'US', // Can be randomized per request
+            countryCode: input.countryCode || 'US', // Can be randomized per request
         })
 
         this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
 
+        // Initialize R2 client if credentials provided
+        if (input.r2AccountId && input.r2AccessKeyId && input.r2SecretAccessKey) {
+            this.r2Client = new S3Client({
+                region: 'auto',
+                endpoint: `https://${input.r2AccountId}.r2.cloudflarestorage.com`,
+                credentials: {
+                    accessKeyId: input.r2AccessKeyId,
+                    secretAccessKey: input.r2SecretAccessKey,
+                },
+            })
+            console.log('☁️ R2 client initialized')
+        }
+
         console.log('🌐 Apify Actor initialized with:')
         console.log(`📍 Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
         console.log(`🎭 Profile: ${this.currentProfile.platform}`)
+        console.log(`☁️ R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
     }
 
-    async extractYouTubeVideo(videoUrl) {
+    async extractYouTubeVideo(videoUrl, uploadToR2 = false, r2BucketName = '') {
         const videoId = this.extractVideoId(videoUrl)
         if (!videoId) {
             throw new Error('Invalid YouTube URL')
@@ -60,8 +78,8 @@ class ApifyYouTubeProxy {
 
         // Try multiple extraction methods with proxy rotation
         const extractionMethods = [
-            () => this.extractViaEmbedPage(videoId),
             () => this.extractViaWatchPage(videoId),
+            () => this.extractViaEmbedPage(videoId),
             () => this.extractViaMobileAPI(videoId),
             () => this.extractViaOEmbed(videoId),
         ]
@@ -70,7 +88,15 @@ class ApifyYouTubeProxy {
             try {
                 console.log(`📡 Attempt ${index + 1}: ${method.name}`)
                 const result = await method()
-                if (result && result.url) {
+                
+                if (result && (result.audioFormats?.length > 0 || result.url)) {
+                    // If we found audio formats and R2 upload is requested
+                    if (uploadToR2 && result.audioFormats?.length > 0 && this.r2Client) {
+                        console.log('🎵 Audio formats found, downloading and uploading to R2...')
+                        const r2Result = await this.downloadAndUploadAudio(result, r2BucketName)
+                        return r2Result
+                    }
+                    
                     return result
                 }
             } catch (error) {
@@ -82,6 +108,79 @@ class ApifyYouTubeProxy {
         }
 
         throw new Error('All extraction methods failed')
+    }
+
+    async downloadAndUploadAudio(extractionResult, bucketName) {
+        const { videoId, audioFormats, videoInfo } = extractionResult
+        
+        if (!audioFormats || audioFormats.length === 0) {
+            throw new Error('No audio formats available')
+        }
+
+        // Select best audio format (prioritized in extractAudioOnlyFormats)
+        const bestAudioFormat = audioFormats[0]
+        console.log(`🎵 Downloading audio: ${bestAudioFormat.mimeType} (${bestAudioFormat.audioQuality})`)
+
+        try {
+            // Download audio stream
+            const audioResponse = await this.makeRequest(bestAudioFormat.url, {
+                responseType: 'stream'
+            })
+
+            if (audioResponse.statusCode !== 200) {
+                throw new Error(`Failed to download audio: HTTP ${audioResponse.statusCode}`)
+            }
+
+            // Generate R2 object key
+            const fileExtension = bestAudioFormat.mimeType.includes('mp4') ? 'mp4' : 
+                                 bestAudioFormat.mimeType.includes('webm') ? 'webm' : 'audio'
+            const objectKey = `youtube-audio/${videoId}/${Date.now()}.${fileExtension}`
+
+            console.log(`☁️ Uploading to R2: ${objectKey}`)
+
+            // Upload to R2 using streaming upload
+            const upload = new Upload({
+                client: this.r2Client,
+                params: {
+                    Bucket: bucketName,
+                    Key: objectKey,
+                    Body: audioResponse.body,
+                    ContentType: bestAudioFormat.mimeType,
+                    Metadata: {
+                        videoId: videoId,
+                        title: videoInfo?.title || 'Unknown',
+                        audioQuality: bestAudioFormat.audioQuality,
+                        bitrate: bestAudioFormat.bitrate?.toString() || 'unknown',
+                        duration: bestAudioFormat.approxDurationMs || 'unknown',
+                        extractedAt: new Date().toISOString()
+                    }
+                }
+            })
+
+            const uploadResult = await upload.done()
+            console.log(`✅ Audio uploaded successfully to R2`)
+
+            // Return comprehensive result
+            return {
+                success: true,
+                videoId,
+                videoInfo,
+                audioFormat: bestAudioFormat,
+                r2Upload: {
+                    bucket: bucketName,
+                    key: objectKey,
+                    url: `https://${bucketName}.r2.dev/${objectKey}`, // Adjust based on your R2 domain
+                    etag: uploadResult.ETag,
+                    location: uploadResult.Location
+                },
+                extractedAt: new Date().toISOString(),
+                method: 'audio-only-r2-upload'
+            }
+
+        } catch (error) {
+            console.error(`❌ Audio download/upload failed: ${error.message}`)
+            throw new Error(`Audio processing failed: ${error.message}`)
+        }
     }
 
     async rotateIPAndProfile() {
@@ -186,13 +285,31 @@ class ApifyYouTubeProxy {
                 const playerResponse = JSON.parse(match[1])
                 const streamingData = playerResponse.streamingData
 
-                if (streamingData && streamingData.formats) {
-                    const format = streamingData.formats[0]
-                    return {
-                        videoId,
-                        url: format.url,
-                        method: 'watch',
-                        extractedAt: new Date().toISOString(),
+                if (streamingData) {
+                    // Prioritize audio-only streams
+                    const audioFormats = this.extractAudioOnlyFormats(streamingData)
+                    
+                    if (audioFormats.length > 0) {
+                        return {
+                            videoId,
+                            audioFormats,
+                            videoInfo: playerResponse.videoDetails,
+                            method: 'watch',
+                            extractedAt: new Date().toISOString()
+                        }
+                    }
+                    
+                    // Fallback to combined formats if no audio-only found
+                    if (streamingData.formats && streamingData.formats.length > 0) {
+                        const format = streamingData.formats[0]
+                        return {
+                            videoId,
+                            url: format.url,
+                            audioFormats: [],
+                            videoInfo: playerResponse.videoDetails,
+                            method: 'watch-fallback',
+                            extractedAt: new Date().toISOString()
+                        }
                     }
                 }
             } catch (parseError) {
@@ -201,6 +318,48 @@ class ApifyYouTubeProxy {
         }
 
         throw new Error('No player response found')
+    }
+
+    // Extract and prioritize audio-only formats
+    extractAudioOnlyFormats(streamingData) {
+        const audioFormats = []
+        
+        // Check adaptive formats for audio-only streams
+        if (streamingData.adaptiveFormats) {
+            for (const format of streamingData.adaptiveFormats) {
+                // Audio-only formats (no video)
+                if (format.mimeType && format.mimeType.startsWith('audio/')) {
+                    const audioFormat = {
+                        itag: format.itag,
+                        url: format.url,
+                        mimeType: format.mimeType,
+                        audioQuality: format.audioQuality || 'unknown',
+                        bitrate: format.bitrate || format.averageBitrate,
+                        contentLength: format.contentLength,
+                        approxDurationMs: format.approxDurationMs,
+                        codec: this.extractCodec(format.mimeType)
+                    }
+                    
+                    // Prioritize by quality and codec
+                    if (format.itag === 140) { // AAC 128kbps - most compatible
+                        audioFormats.unshift(audioFormat)
+                    } else if (format.itag === 251) { // Opus - high quality
+                        audioFormats.push(audioFormat)
+                    } else if (format.itag === 249 || format.itag === 250) { // Opus lower quality
+                        audioFormats.push(audioFormat)
+                    } else {
+                        audioFormats.push(audioFormat)
+                    }
+                }
+            }
+        }
+        
+        return audioFormats
+    }
+
+    extractCodec(mimeType) {
+        const codecMatch = mimeType.match(/codecs="([^"]+)"/)
+        return codecMatch ? codecMatch[1] : 'unknown'
     }
 
     async extractViaMobileAPI(videoId) {
@@ -268,21 +427,30 @@ class ApifyYouTubeProxy {
 
 // Main Apify Actor entry point
 Actor.main(async () => {
-    console.log('🚀 Apify YouTube Proxy Actor starting...')
+    console.log('🚀 Apify YouTube Audio Extractor Actor starting...')
 
     // Get input from Apify
     const input = await Actor.getInput()
     console.log('📥 Input received:', input)
 
     const proxy = new ApifyYouTubeProxy()
-    await proxy.initialize()
+    await proxy.initialize(input)
 
     try {
         let result
 
         if (input.youtubeUrl) {
-            // YouTube video extraction mode
-            result = await proxy.extractYouTubeVideo(input.youtubeUrl)
+            // YouTube audio extraction mode
+            const uploadToR2 = !!(input.r2BucketName && input.r2AccountId && input.r2AccessKeyId && input.r2SecretAccessKey)
+            
+            if (uploadToR2) {
+                console.log('🎵 YouTube audio extraction + R2 upload mode')
+                result = await proxy.extractYouTubeVideo(input.youtubeUrl, true, input.r2BucketName)
+            } else {
+                console.log('🎵 YouTube audio extraction mode (no R2 upload)')
+                result = await proxy.extractYouTubeVideo(input.youtubeUrl, false)
+            }
+            
             console.log('✅ YouTube extraction successful')
         } else if (input.proxyUrl) {
             // Generic proxy mode
@@ -291,10 +459,14 @@ Actor.main(async () => {
         } else {
             // Default test mode
             result = {
-                message: 'Apify YouTube Proxy Actor is running!',
-                availableModes: ['youtubeUrl', 'proxyUrl'],
+                message: 'Apify YouTube Audio Extractor Actor is running!',
+                availableModes: ['youtubeUrl + R2 upload', 'youtubeUrl (extract only)', 'proxyUrl'],
                 example: {
                     youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                    r2BucketName: 'my-audio-bucket',
+                    r2AccountId: 'your-account-id',
+                    r2AccessKeyId: 'your-access-key',
+                    r2SecretAccessKey: 'your-secret-key',
                     proxyUrl: 'https://httpbin.org/ip',
                 },
                 timestamp: new Date().toISOString(),
