@@ -6,11 +6,11 @@ import { ApifyYouTubeProxy } from './ApifyYouTubeProxy.js'
 
 // Main Apify Actor entry point
 Actor.main(async () => {
-    console.log('🚀 Apify YouTube Audio Extractor Actor starting...')
+    console.log('Apify YouTube Audio Extractor Actor starting...')
 
     // Get input from Apify
     const input = await Actor.getInput()
-    console.log('📥 Input received:', input)
+    console.log('Input received:', input)
 
     const extractor = new ApifyYouTubeProxy()
     await extractor.initialize(input)
@@ -23,18 +23,18 @@ Actor.main(async () => {
             const uploadToR2 = !!process.env.CLOUDFLARE_R2_BUCKET && !!extractor.r2Client
 
             if (uploadToR2) {
-                console.log('🎵 YouTube audio extraction + R2 upload mode')
+                console.log('YouTube audio extraction + R2 upload mode')
                 result = await extractor.extractYouTubeVideo(input.youtubeUrl, true)
             } else {
-                console.log('🎵 YouTube audio extraction mode (no R2 upload)')
+                console.log('YouTube audio extraction mode (no R2 upload)')
                 result = await extractor.extractYouTubeVideo(input.youtubeUrl, false)
             }
 
-            console.log('✅ YouTube extraction successful')
+            console.log('YouTube extraction successful')
         } else if (input.proxyUrl) {
             // Generic proxy mode
             result = await extractor.proxyGenericRequest(input.proxyUrl)
-            console.log('✅ Proxy request successful')
+            console.log('Proxy request successful')
         } else {
             // Default test mode
             result = {
@@ -54,13 +54,13 @@ Actor.main(async () => {
 
         // Save result to Apify dataset
         await Actor.pushData(result)
-        console.log('💾 Result saved to dataset')
+        console.log('Result saved to dataset')
 
         // Also save to key-value store
         await Actor.setValue('RESULT', result)
-        console.log('🔑 Result saved to key-value store')
+        console.log('Result saved to key-value store')
     } catch (error) {
-        console.error('❌ Actor failed:', error)
+        console.error('Actor failed:', error)
 
         const errorResult = {
             success: false,
@@ -74,5 +74,5 @@ Actor.main(async () => {
         throw error
     }
 
-    console.log('🎯 Apify Actor completed successfully!')
+    console.log('Apify Actor completed successfully!')
 })

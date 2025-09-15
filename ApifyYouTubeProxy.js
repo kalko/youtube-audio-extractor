@@ -123,38 +123,6 @@ export class ApifyYouTubeProxy {
         }
     }
 
-    async rotateIPAndProfile() {
-        // Force new IP by getting new proxy URL
-        const countries = ['US', 'GB', 'CA', 'AU', 'DE']
-        const randomCountry = countries[Math.floor(Math.random() * countries.length)]
-
-        try {
-            const proxyConfiguration = await Actor.createProxyConfiguration({
-                groups: ['RESIDENTIAL'],
-                countryCode: randomCountry,
-            })
-
-            this.proxyUrl = await proxyConfiguration.newUrl(`session_${Date.now()}`)
-            this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
-
-            console.log(`IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
-
-            // Log new IP after rotation
-            try {
-                const ipResponse = await this.makeRequest('https://httpbin.org/ip')
-                const ipData = JSON.parse(ipResponse.body)
-                console.log(`New IP: ${ipData.origin}`)
-            } catch (error) {
-                console.log(`Could not verify new IP: ${error.message}`)
-            }
-        } catch (error) {
-            console.log(`Failed to rotate proxy: ${error.message}`)
-        }
-
-        // Add delay to simulate human behavior
-        await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 2000))
-    }
-
     async makeRequest(url, options = {}) {
         const requestOptions = {
             url,

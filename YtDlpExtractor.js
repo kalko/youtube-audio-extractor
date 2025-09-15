@@ -97,39 +97,6 @@ export class YtDlpExtractor {
         }
     }
 
-    static async getVideoInfo(videoId, options = {}) {
-        console.log(`📊 Using yt-dlp to get video info for: ${videoId}`)
-
-        const args = ['--dump-json', '--no-warnings', `https://www.youtube.com/watch?v=${videoId}`]
-
-        if (options.proxy) {
-            args.push('--proxy', options.proxy)
-        }
-
-        try {
-            const { stdout, stderr } = await this.runYtDlp(args)
-
-            if (stderr && stderr.includes('ERROR')) {
-                throw new Error(`yt-dlp error: ${stderr}`)
-            }
-
-            const videoInfo = JSON.parse(stdout)
-            console.log(`✅ yt-dlp extracted video info successfully`)
-
-            return {
-                title: videoInfo.title,
-                duration: videoInfo.duration,
-                uploader: videoInfo.uploader,
-                description: videoInfo.description,
-                formats: videoInfo.formats,
-                method: 'yt-dlp-info',
-            }
-        } catch (error) {
-            console.error(`❌ yt-dlp info extraction failed: ${error.message}`)
-            throw error
-        }
-    }
-
     static async runYtDlp(args) {
         return new Promise((resolve, reject) => {
             import('child_process')
