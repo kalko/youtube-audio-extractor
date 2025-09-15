@@ -105,6 +105,58 @@ export class ApifyYouTubeProxy {
 
         console.log(`Extracting video: ${videoId}`)
 
+        // Fast path: check if file exists on R2 first
+        if (uploadToR2 && this.r2Client) {
+            const bucketName = process.env.CLOUDFLARE_R2_BUCKET
+            const objectKey = `temp-audio/${videoId}.mp4`
+            const { HeadObjectCommand } = await import('@aws-sdk/client-s3')
+            try {
+                await this.r2Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: objectKey }))
+                // File exists, return result immediately
+                console.log('File already exists on R2, skipping download.')
+                return {
+                    success: true,
+                    videoId,
+                    videoInfo: { title: 'yt-dlp extracted (cached)' },
+                    audioFormat: {
+                        itag: 'yt-dlp',
+                        mimeType: 'audio/mp4',
+                        audioQuality: 'AUDIO_QUALITY_HIGH',
+                        bitrate: 128000,
+                        codec: 'mp4a.40.2',
+                        whisperReady: true,
+                        ytDlpExtracted: true,
+                    },
+                    whisperReady: {
+                        audioUrl: `https://${bucketName}.r2.dev/${objectKey}`,
+                        format: 'audio/mp4',
+                        codec: 'best-quality',
+                        filename: `${videoId}.mp4`,
+                    },
+                    r2Upload: {
+                        bucket: bucketName,
+                        key: objectKey,
+                        url: `https://${bucketName}.r2.dev/${objectKey}`,
+                        // No ETag or Location since not uploading now
+                    },
+                    proxyInfo: {
+                        proxyUsed: !!this.proxyUrl,
+                        profile: this.currentProfile.platform,
+                        extractionMethod: 'yt-dlp-r2-cached',
+                    },
+                    extractedAt: new Date().toISOString(),
+                    method: 'yt-dlp-r2-direct',
+                    ytDlpDirect: true, // Flag for direct yt-dlp result
+                    cached: true,
+                }
+            } catch (err) {
+                if (err.name !== 'NotFound' && err.$metadata?.httpStatusCode !== 404) {
+                    console.error('Error checking R2 for existing file:', err)
+                }
+                // If not found, continue to download
+            }
+        }
+
         // Use yt-dlp as the primary extraction method
         try {
             console.log('Using yt-dlp extraction method')
