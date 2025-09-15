@@ -112,6 +112,12 @@ export class ApifyYouTubeProxy {
 
                 // For R2 upload mode, we specifically need audio formats with URLs
                 if (uploadToR2) {
+                    // Check if this is a direct yt-dlp R2 result (already uploaded)
+                    if (result && result.ytDlpDirect && result.r2Upload) {
+                        console.log('🎉 yt-dlp direct R2 upload completed successfully!')
+                        return result
+                    }
+
                     if (result && result.audioFormats?.length > 0 && this.r2Client) {
                         // Check if any audio format has a usable URL
                         const hasUsableAudio = result.audioFormats.some((f) => f.url)
@@ -644,43 +650,107 @@ export class ApifyYouTubeProxy {
     }
 
     async extractViaYtDlp(videoId) {
-        console.log(`🚀 Trying yt-dlp extraction for ${videoId}`)
+        console.log(`🚀 Trying yt-dlp direct download for ${videoId}`)
 
         try {
-            // Use yt-dlp to get audio URL with proxy if available
+            // Use yt-dlp direct download with proxy if available
             const extractorOptions = {}
             if (this.proxyUrl) {
                 extractorOptions.proxy = this.proxyUrl
             }
 
-            const result = await YtDlpExtractor.extractAudioUrl(videoId, extractorOptions)
+            // Use yt-dlp to download the file directly instead of getting URL
+            const result = await YtDlpExtractor.downloadAudioDirect(videoId, extractorOptions)
 
-            if (result.audioUrl) {
-                // Convert to our format structure
-                const audioFormat = {
-                    itag: 'yt-dlp',
-                    url: result.audioUrl,
-                    mimeType: 'audio/mp4', // yt-dlp prefers m4a/mp4
-                    audioQuality: 'AUDIO_QUALITY_HIGH',
-                    bitrate: 128000,
-                    codec: 'mp4a.40.2',
-                    whisperReady: true,
-                    ytDlpExtracted: true,
+            if (result.filePath) {
+                console.log(`✅ yt-dlp downloaded audio successfully to: ${result.filePath}`)
+
+                // Read the file and upload to R2 directly
+                const fs = await import('fs')
+                const fileBuffer = await fs.promises.readFile(result.filePath)
+
+                // Upload to R2
+                const bucketName = process.env.CLOUDFLARE_R2_BUCKET
+                if (!bucketName) {
+                    throw new Error('CLOUDFLARE_R2_BUCKET environment variable not set')
                 }
 
+                const objectKey = `temp-audio/${videoId}.mp4`
+                console.log(`☁️ Uploading yt-dlp file to R2: ${objectKey}`)
+
+                const { Upload } = await import('@aws-sdk/lib-storage')
+                const upload = new Upload({
+                    client: this.r2Client,
+                    params: {
+                        Bucket: bucketName,
+                        Key: objectKey,
+                        Body: fileBuffer,
+                        ContentType: 'audio/mp4',
+                        Metadata: {
+                            videoId: videoId,
+                            title: 'yt-dlp extracted',
+                            format: 'audio-best-quality',
+                            processingStatus: 'ready-for-transcription',
+                            extractedAt: new Date().toISOString(),
+                            method: 'yt-dlp-direct',
+                            whisperOptimized: 'true',
+                        },
+                    },
+                })
+
+                const uploadResult = await upload.done()
+                console.log(`✅ yt-dlp audio uploaded successfully to R2`)
+
+                // Clean up temporary file
+                try {
+                    await fs.promises.unlink(result.filePath)
+                    console.log(`🗑️ Cleaned up temporary file: ${result.filePath}`)
+                } catch (cleanupError) {
+                    console.log(`⚠️ Could not clean up temp file: ${cleanupError.message}`)
+                }
+
+                // Return R2 upload result directly (bypassing normal audio format flow)
                 return {
+                    success: true,
                     videoId,
-                    audioFormats: [audioFormat],
                     videoInfo: { title: 'yt-dlp extracted' },
-                    method: 'yt-dlp',
+                    audioFormat: {
+                        itag: 'yt-dlp',
+                        mimeType: 'audio/mp4',
+                        audioQuality: 'AUDIO_QUALITY_HIGH',
+                        bitrate: 128000,
+                        codec: 'mp4a.40.2',
+                        whisperReady: true,
+                        ytDlpExtracted: true,
+                    },
+                    whisperReady: {
+                        audioUrl: `https://${bucketName}.r2.dev/${objectKey}`,
+                        format: 'audio/mp4',
+                        codec: 'best-quality',
+                        filename: `${videoId}.mp4`,
+                    },
+                    r2Upload: {
+                        bucket: bucketName,
+                        key: objectKey,
+                        url: `https://${bucketName}.r2.dev/${objectKey}`,
+                        etag: uploadResult.ETag,
+                        location: uploadResult.Location,
+                    },
+                    proxyInfo: {
+                        proxyUsed: !!this.proxyUrl,
+                        profile: this.currentProfile.platform,
+                        extractionMethod: 'yt-dlp-direct-download',
+                    },
                     extractedAt: new Date().toISOString(),
+                    method: 'yt-dlp-r2-direct',
+                    ytDlpDirect: true, // Flag for direct yt-dlp result
                 }
             }
         } catch (error) {
-            throw new Error(`yt-dlp extraction failed: ${error.message}`)
+            throw new Error(`yt-dlp direct download failed: ${error.message}`)
         }
 
-        throw new Error('yt-dlp extraction returned no audio URL')
+        throw new Error('yt-dlp extraction returned no audio file')
     }
 
     async extractViaOEmbed(videoId) {
