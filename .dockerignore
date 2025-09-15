@@ -1,0 +1,28 @@
+# Ignore node_modules (will be installed fresh in container)
+node_modules/
+
+# Ignore git files
+.git/
+.gitignore
+
+# Ignore test files
+test*.js
+*_old.js
+*_clean.js
+
+# Ignore editor files
+.vscode/
+*.swp
+*.swo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+npm-debug.log*
+
+# Ignore temporary files
+tmp/
+temp/

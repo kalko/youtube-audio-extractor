@@ -1,30 +1,29 @@
-# Use Node.js official image
-FROM node:20-slim
+# Ultra-optimized Dockerfile for YouTube Audio Extractor
+# Focus on minimal size and faster startup
 
-# Install system dependencies for yt-dlp
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:20-alpine
 
-# Install yt-dlp
-RUN pip3 install --break-system-packages yt-dlp
+# Install only essential runtime dependencies in single layer
+RUN apk add --no-cache python3 py3-pip ffmpeg \
+    && pip3 install --no-cache-dir --break-system-packages yt-dlp \
+    && rm -rf /var/cache/apk/* /root/.cache /tmp/*
 
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy package files
+# Copy package files and install dependencies
 COPY package*.json ./
+RUN npm ci --only=production --no-audit --no-fund \
+    && npm cache clean --force \
+    && rm -rf /tmp/*
 
-# Install dependencies
-RUN npm ci --only=production
+# Copy only essential source files
+COPY main.js ApifyYouTubeProxy.js YtDlpExtractor.js ./
+COPY .actor/ ./.actor/
 
-# Copy source code
-COPY . .
-
-# Expose port (not needed for Apify but good practice)
-EXPOSE 3000
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S apify -u 1001 -G nodejs
+USER apify
 
 # Run the app
-CMD ["npm", "start"]
+CMD ["node", "main.js"]

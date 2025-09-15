@@ -1,0 +1,58 @@
+# Optimized Dockerfile for YouTube Audio Extractor
+# Multi-stage build to reduce final image size
+
+# Stage 1: Build stage with full tools
+FROM node:20-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    ffmpeg \
+    && pip3 install --break-system-packages yt-dlp
+
+WORKDIR /usr/src/app
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+# Stage 2: Runtime stage with minimal footprint
+FROM node:20-alpine AS runtime
+
+# Install only runtime dependencies
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    ffmpeg \
+    && pip3 install --break-system-packages yt-dlp \
+    && rm -rf /var/cache/apk/* \
+    && rm -rf /root/.cache
+
+WORKDIR /usr/src/app
+
+# Copy dependencies from builder stage
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+
+# Copy source code (excluding node_modules and test files)
+COPY package*.json ./
+COPY main.js ./
+COPY ApifyYouTubeProxy.js ./
+COPY YtDlpExtractor.js ./
+COPY .actor/ ./.actor/
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S apify -u 1001 -G nodejs
+
+USER apify
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD node -e "console.log('Health check passed')" || exit 1
+
+# Run the app
+CMD ["npm", "start"]

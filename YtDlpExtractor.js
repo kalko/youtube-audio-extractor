@@ -52,6 +52,11 @@ export class YtDlpExtractor {
             outputPath,
             '--no-warnings',
             '--no-playlist',
+            '--no-check-certificate',  // Skip SSL checks for speed
+            '--socket-timeout', '15',   // 15 second socket timeout
+            '--retries', '2',           // Only 2 retries for speed
+            '--fragment-retries', '2',  // Fragment retry limit
+            '--no-continue',            // Don't resume partial downloads
             `https://www.youtube.com/watch?v=${videoId}`,
         ]
 
@@ -151,11 +156,11 @@ export class YtDlpExtractor {
                         }
                     })
 
-                    // Set a timeout
+                    // Set a timeout - shorter for better performance
                     setTimeout(() => {
                         process.kill()
-                        reject(new Error('yt-dlp process timed out after 2 minutes'))
-                    }, 120000) // 2 minutes
+                        reject(new Error('yt-dlp process timed out after 90 seconds'))
+                    }, 90000) // 90 seconds instead of 2 minutes
                 })
                 .catch(reject)
         })
