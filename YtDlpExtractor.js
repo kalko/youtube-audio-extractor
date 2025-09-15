@@ -52,11 +52,14 @@ export class YtDlpExtractor {
             outputPath,
             '--no-warnings',
             '--no-playlist',
-            '--no-check-certificate',  // Skip SSL checks for speed
-            '--socket-timeout', '15',   // 15 second socket timeout
-            '--retries', '2',           // Only 2 retries for speed
-            '--fragment-retries', '2',  // Fragment retry limit
-            '--no-continue',            // Don't resume partial downloads
+            '--no-check-certificate', // Skip SSL checks for speed
+            '--socket-timeout',
+            '15', // 15 second socket timeout
+            '--retries',
+            '2', // Only 2 retries for speed
+            '--fragment-retries',
+            '2', // Fragment retry limit
+            '--no-continue', // Don't resume partial downloads
             `https://www.youtube.com/watch?v=${videoId}`,
         ]
 
