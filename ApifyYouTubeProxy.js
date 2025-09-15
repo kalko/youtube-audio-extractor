@@ -81,8 +81,17 @@ export class ApifyYouTubeProxy {
     async logCurrentIP() {
         try {
             const ipResponse = await this.makeRequest('https://httpbin.org/ip')
-            const ipData = JSON.parse(ipResponse.body)
-            console.log(`Current IP: ${ipData.origin}`)
+            console.log('Raw IP check response:', ipResponse.body)
+            let ipData
+            try {
+                ipData = JSON.parse(ipResponse.body)
+                console.log(`Current IP: ${ipData.origin}`)
+            } catch (jsonErr) {
+                console.error(
+                    'IP check did not return JSON. Possible block or CAPTCHA. Raw response:',
+                    ipResponse.body,
+                )
+            }
         } catch (error) {
             console.log(`Could not determine IP: ${error.message}`)
         }

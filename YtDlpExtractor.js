@@ -67,9 +67,20 @@ export class YtDlpExtractor {
             args.push('--proxy', options.proxy)
         }
 
+        console.log('yt-dlp command:', 'yt-dlp', args.join(' '))
+        if (options.proxy) {
+            console.log('yt-dlp using proxy:', options.proxy)
+        }
+
         try {
             const { stdout, stderr } = await this.runYtDlp(args)
 
+            if (stderr) {
+                console.log('yt-dlp stderr:', stderr)
+            }
+            if (stdout) {
+                console.log('yt-dlp stdout:', stdout)
+            }
             if (stderr && stderr.includes('ERROR')) {
                 throw new Error(`yt-dlp error: ${stderr}`)
             }
@@ -93,6 +104,9 @@ export class YtDlpExtractor {
             }
         } catch (error) {
             console.error(`yt-dlp download failed: ${error.message}`)
+            if (error.stderr) {
+                console.error('yt-dlp process stderr:', error.stderr)
+            }
             throw error
         }
     }
@@ -129,8 +143,8 @@ export class YtDlpExtractor {
                     // Set a timeout - shorter for better performance
                     setTimeout(() => {
                         process.kill()
-                        reject(new Error('yt-dlp process timed out after 90 seconds'))
-                    }, 90000) // 90 seconds instead of 2 minutes
+                        reject(new Error('yt-dlp process timed out after 480 seconds'))
+                    }, 480000) // 8min timeout
                 })
                 .catch(reject)
         })
