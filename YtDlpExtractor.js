@@ -5,7 +5,7 @@ import { spawn } from 'child_process'
 
 export class YtDlpExtractor {
     static async extractAudioUrl(videoId, options = {}) {
-        console.log(`🎥 Using yt-dlp to extract audio URL for: ${videoId}`)
+        console.log(`Using yt-dlp to extract audio URL for: ${videoId}`)
 
         const args = [
             '--get-url',
@@ -31,19 +31,19 @@ export class YtDlpExtractor {
                 throw new Error('yt-dlp did not return a valid URL')
             }
 
-            console.log(`✅ yt-dlp extracted audio URL successfully`)
+            console.log(`yt-dlp extracted audio URL successfully`)
             return {
                 audioUrl,
                 method: 'yt-dlp',
             }
         } catch (error) {
-            console.error(`❌ yt-dlp extraction failed: ${error.message}`)
+            console.error(`yt-dlp extraction failed: ${error.message}`)
             throw error
         }
     }
 
     static async downloadAudioDirect(videoId, options = {}) {
-        console.log(`🎵 Using yt-dlp to download audio directly for: ${videoId}`)
+        console.log(`Using yt-dlp to download audio directly for: ${videoId}`)
 
         const outputPath = `/tmp/audio_${videoId}.%(ext)s`
 
@@ -78,7 +78,7 @@ export class YtDlpExtractor {
             }
 
             const fullPath = `/tmp/${audioFile}`
-            console.log(`✅ yt-dlp downloaded audio to: ${fullPath}`)
+            console.log(`yt-dlp downloaded audio to: ${fullPath}`)
 
             return {
                 filePath: fullPath,
@@ -86,7 +86,7 @@ export class YtDlpExtractor {
                 method: 'yt-dlp-direct',
             }
         } catch (error) {
-            console.error(`❌ yt-dlp download failed: ${error.message}`)
+            console.error(`yt-dlp download failed: ${error.message}`)
             throw error
         }
     }
@@ -124,39 +124,40 @@ export class YtDlpExtractor {
         }
     }
 
-    static runYtDlp(args) {
+    static async runYtDlp(args) {
         return new Promise((resolve, reject) => {
-            console.log(`🔧 Running: yt-dlp ${args.join(' ')}`)
+            import('child_process').then(({ spawn }) => {
+                const process = spawn('yt-dlp', args)
 
-            const process = spawn('yt-dlp', args)
-            let stdout = ''
-            let stderr = ''
+                let stdout = ''
+                let stderr = ''
 
-            process.stdout.on('data', (data) => {
-                stdout += data.toString()
-            })
+                process.stdout.on('data', (data) => {
+                    stdout += data.toString()
+                })
 
-            process.stderr.on('data', (data) => {
-                stderr += data.toString()
-            })
+                process.stderr.on('data', (data) => {
+                    stderr += data.toString()
+                })
 
-            process.on('close', (code) => {
-                if (code === 0) {
-                    resolve({ stdout, stderr })
-                } else {
-                    reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`))
-                }
-            })
+                process.on('error', (error) => {
+                    reject(new Error(`Failed to spawn yt-dlp: ${error.message}`))
+                })
 
-            process.on('error', (error) => {
-                reject(new Error(`Failed to start yt-dlp: ${error.message}`))
-            })
+                process.on('close', (code) => {
+                    if (code === 0) {
+                        resolve({ stdout, stderr })
+                    } else {
+                        reject(new Error(`yt-dlp exited with code ${code}: ${stderr || stdout}`))
+                    }
+                })
 
-            // Timeout after 2 minutes
-            setTimeout(() => {
-                process.kill('SIGTERM')
-                reject(new Error('yt-dlp timeout after 2 minutes'))
-            }, 120000)
+                // Set a timeout
+                setTimeout(() => {
+                    process.kill()
+                    reject(new Error('yt-dlp process timed out after 2 minutes'))
+                }, 120000) // 2 minutes
+            }).catch(reject)
         })
     }
 }
