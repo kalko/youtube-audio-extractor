@@ -1,8 +1,6 @@
 // YtDlpExtractor - Uses yt-dlp subprocess for reliable YouTube extraction
 // This bypasses all signature issues by using the proven yt-dlp tool
 
-import { spawn } from 'child_process'
-
 export class YtDlpExtractor {
     static async extractAudioUrl(videoId, options = {}) {
         console.log(`Using yt-dlp to extract audio URL for: ${videoId}`)
@@ -126,38 +124,40 @@ export class YtDlpExtractor {
 
     static async runYtDlp(args) {
         return new Promise((resolve, reject) => {
-            import('child_process').then(({ spawn }) => {
-                const process = spawn('yt-dlp', args)
+            import('child_process')
+                .then(({ spawn }) => {
+                    const process = spawn('yt-dlp', args)
 
-                let stdout = ''
-                let stderr = ''
+                    let stdout = ''
+                    let stderr = ''
 
-                process.stdout.on('data', (data) => {
-                    stdout += data.toString()
+                    process.stdout.on('data', (data) => {
+                        stdout += data.toString()
+                    })
+
+                    process.stderr.on('data', (data) => {
+                        stderr += data.toString()
+                    })
+
+                    process.on('error', (error) => {
+                        reject(new Error(`Failed to spawn yt-dlp: ${error.message}`))
+                    })
+
+                    process.on('close', (code) => {
+                        if (code === 0) {
+                            resolve({ stdout, stderr })
+                        } else {
+                            reject(new Error(`yt-dlp exited with code ${code}: ${stderr || stdout}`))
+                        }
+                    })
+
+                    // Set a timeout
+                    setTimeout(() => {
+                        process.kill()
+                        reject(new Error('yt-dlp process timed out after 2 minutes'))
+                    }, 120000) // 2 minutes
                 })
-
-                process.stderr.on('data', (data) => {
-                    stderr += data.toString()
-                })
-
-                process.on('error', (error) => {
-                    reject(new Error(`Failed to spawn yt-dlp: ${error.message}`))
-                })
-
-                process.on('close', (code) => {
-                    if (code === 0) {
-                        resolve({ stdout, stderr })
-                    } else {
-                        reject(new Error(`yt-dlp exited with code ${code}: ${stderr || stdout}`))
-                    }
-                })
-
-                // Set a timeout
-                setTimeout(() => {
-                    process.kill()
-                    reject(new Error('yt-dlp process timed out after 2 minutes'))
-                }, 120000) // 2 minutes
-            }).catch(reject)
+                .catch(reject)
         })
     }
 }
