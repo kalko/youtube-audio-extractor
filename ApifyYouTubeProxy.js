@@ -64,15 +64,15 @@ export class ApifyYouTubeProxy {
                     secretAccessKey: r2SecretAccessKey,
                 },
             })
-            console.log('☁️ R2 client initialized from environment variables')
+            console.log('R2 client initialized from environment variables')
         } else {
-            console.log('⚠️ R2 environment variables not found - R2 upload disabled')
+            console.log('R2 environment variables not found - R2 upload disabled')
         }
 
-        console.log('🌐 Apify Actor initialized with:')
-        console.log(`📍 Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
-        console.log(`🎭 Profile: ${this.currentProfile.platform}`)
-        console.log(`☁️ R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
+        console.log('Apify Actor initialized with:')
+        console.log(`Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
+        console.log(`Profile: ${this.currentProfile.platform}`)
+        console.log(`R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
 
         // Log current IP address
         await this.logCurrentIP()
@@ -82,9 +82,9 @@ export class ApifyYouTubeProxy {
         try {
             const ipResponse = await this.makeRequest('https://httpbin.org/ip')
             const ipData = JSON.parse(ipResponse.body)
-            console.log(`🌍 Current IP: ${ipData.origin}`)
+            console.log(`Current IP: ${ipData.origin}`)
         } catch (error) {
-            console.log(`⚠️ Could not determine IP: ${error.message}`)
+            console.log(`Could not determine IP: ${error.message}`)
         }
     }
 
@@ -94,48 +94,26 @@ export class ApifyYouTubeProxy {
             throw new Error('Invalid YouTube URL')
         }
 
-        console.log(`🎯 Extracting video: ${videoId}`)
+        console.log(`Extracting video: ${videoId}`)
 
-        // Try multiple extraction methods with proxy rotation
+        // Use yt-dlp as the primary extraction method (others are signature-protected)
         const extractionMethods = [
-            () => this.extractViaWatchPage(videoId),
-            () => this.extractViaEmbedPage(videoId),
-            () => this.extractViaMobileAPI(videoId),
-            () => this.extractViaYtDlp(videoId), // NEW: yt-dlp fallback
-            () => this.extractViaOEmbed(videoId),
+            () => this.extractViaYtDlp(videoId), // Reliable yt-dlp extraction
         ]
 
         for (const [index, method] of extractionMethods.entries()) {
             try {
-                console.log(`📡 Attempt ${index + 1}: ${method.name}`)
+                console.log(`Attempt ${index + 1}: ${method.name}`)
                 const result = await method()
 
-                // For R2 upload mode, we specifically need audio formats with URLs
+                // For R2 upload mode, check if this is a direct yt-dlp R2 result
                 if (uploadToR2) {
-                    // Check if this is a direct yt-dlp R2 result (already uploaded)
                     if (result && result.ytDlpDirect && result.r2Upload) {
-                        console.log('🎉 yt-dlp direct R2 upload completed successfully!')
+                        console.log('yt-dlp direct R2 upload completed successfully')
                         return result
-                    }
-
-                    if (result && result.audioFormats?.length > 0 && this.r2Client) {
-                        // Check if any audio format has a usable URL
-                        const hasUsableAudio = result.audioFormats.some((f) => f.url)
-                        if (hasUsableAudio) {
-                            console.log(
-                                '🎵 Audio formats with URLs found, downloading and uploading to R2...',
-                            )
-                            const r2Result = await this.downloadAndUploadAudio(result)
-                            return r2Result
-                        } else {
-                            console.log(
-                                '⚠️ Audio formats found but no usable URLs - continuing to next method...',
-                            )
-                            throw new Error('Audio formats have no usable URLs')
-                        }
                     } else {
-                        console.log('⚠️ No audio formats found for R2 upload - continuing to next method...')
-                        throw new Error('No audio formats suitable for R2 upload')
+                        console.log('No suitable result for R2 upload - continuing to next method')
+                        throw new Error('No suitable result for R2 upload')
                     }
                 } else {
                     // Original logic for non-R2 mode
@@ -146,14 +124,12 @@ export class ApifyYouTubeProxy {
                     }
                 }
             } catch (error) {
-                console.log(`❌ Method ${index + 1} failed: ${error.message}`)
+                console.log(`Method ${index + 1} failed: ${error.message}`)
 
                 // Rotate IP and profile for next attempt
                 await this.rotateIPAndProfile()
             }
-        }
-
-        throw new Error('All extraction methods failed')
+        }        throw new Error('All extraction methods failed')
     }
 
     async downloadAndUploadAudio(extractionResult) {
@@ -283,18 +259,18 @@ export class ApifyYouTubeProxy {
             this.proxyUrl = await proxyConfiguration.newUrl(`session_${Date.now()}`)
             this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
 
-            console.log(`🔄 IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
+            console.log(`IP Rotated: ${randomCountry} | Profile: ${this.currentProfile.platform}`)
 
             // Log new IP after rotation
             try {
                 const ipResponse = await this.makeRequest('https://httpbin.org/ip')
                 const ipData = JSON.parse(ipResponse.body)
-                console.log(`🌍 New IP: ${ipData.origin}`)
+                console.log(`New IP: ${ipData.origin}`)
             } catch (error) {
-                console.log(`⚠️ Could not verify new IP: ${error.message}`)
+                console.log(`Could not verify new IP: ${error.message}`)
             }
         } catch (error) {
-            console.log(`⚠️ Failed to rotate proxy: ${error.message}`)
+            console.log(`Failed to rotate proxy: ${error.message}`)
         }
 
         // Add delay to simulate human behavior
@@ -650,7 +626,7 @@ export class ApifyYouTubeProxy {
     }
 
     async extractViaYtDlp(videoId) {
-        console.log(`🚀 Trying yt-dlp direct download for ${videoId}`)
+        console.log(`Trying yt-dlp direct download for ${videoId}`)
 
         try {
             // Use yt-dlp direct download with proxy if available
@@ -663,12 +639,12 @@ export class ApifyYouTubeProxy {
             const result = await YtDlpExtractor.downloadAudioDirect(videoId, extractorOptions)
 
             if (result.filePath) {
-                console.log(`✅ yt-dlp downloaded audio successfully to: ${result.filePath}`)
-
+                console.log(`yt-dlp downloaded audio successfully to: ${result.filePath}`)
+                
                 // Read the file and upload to R2 directly
                 const fs = await import('fs')
                 const fileBuffer = await fs.promises.readFile(result.filePath)
-
+                
                 // Upload to R2
                 const bucketName = process.env.CLOUDFLARE_R2_BUCKET
                 if (!bucketName) {
@@ -676,7 +652,7 @@ export class ApifyYouTubeProxy {
                 }
 
                 const objectKey = `temp-audio/${videoId}.mp4`
-                console.log(`☁️ Uploading yt-dlp file to R2: ${objectKey}`)
+                console.log(`Uploading yt-dlp file to R2: ${objectKey}`)
 
                 const { Upload } = await import('@aws-sdk/lib-storage')
                 const upload = new Upload({
@@ -699,17 +675,15 @@ export class ApifyYouTubeProxy {
                 })
 
                 const uploadResult = await upload.done()
-                console.log(`✅ yt-dlp audio uploaded successfully to R2`)
+                console.log(`yt-dlp audio uploaded successfully to R2`)
 
                 // Clean up temporary file
                 try {
                     await fs.promises.unlink(result.filePath)
-                    console.log(`🗑️ Cleaned up temporary file: ${result.filePath}`)
+                    console.log(`Cleaned up temporary file: ${result.filePath}`)
                 } catch (cleanupError) {
-                    console.log(`⚠️ Could not clean up temp file: ${cleanupError.message}`)
-                }
-
-                // Return R2 upload result directly (bypassing normal audio format flow)
+                    console.log(`Could not clean up temp file: ${cleanupError.message}`)
+                }                // Return R2 upload result directly (bypassing normal audio format flow)
                 return {
                     success: true,
                     videoId,
