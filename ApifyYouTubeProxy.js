@@ -81,6 +81,8 @@ export class ApifyYouTubeProxy {
     async logCurrentIP() {
         try {
             const ipResponse = await this.makeRequest('https://httpbin.org/ip')
+            console.log('IP check status:', ipResponse.statusCode)
+            console.log('IP check headers:', ipResponse.headers)
             console.log('Raw IP check response:', ipResponse.body)
             let ipData
             try {
@@ -93,7 +95,17 @@ export class ApifyYouTubeProxy {
                 )
             }
         } catch (error) {
-            console.log(`Could not determine IP: ${error.message}`)
+            console.log('IP check failed. Error details:')
+            console.log('Error name:', error.name)
+            console.log('Error message:', error.message)
+            if (error.response) {
+                console.log('Error response status:', error.response.statusCode)
+                console.log('Error response headers:', error.response.headers)
+                console.log('Error response body:', error.response.body)
+            }
+            if (error.code) {
+                console.log('Error code:', error.code)
+            }
         }
     }
 
