@@ -196,43 +196,6 @@ export class ApifyYouTubeProxy {
         }
     }
 
-    async makeRequest(url, options = {}) {
-        const requestOptions = {
-            url,
-            headers: {
-                'User-Agent': this.currentProfile.userAgent,
-                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': this.currentProfile.acceptLanguage,
-                'Accept-Encoding': 'gzip, deflate, br',
-                DNT: '1',
-                Connection: 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                ...options.headers,
-            },
-            timeout: { request: 120000 }, // 2 minutes timeout for large audio files
-            retry: { limit: 0 },
-            ...options,
-        }
-
-        // Use Apify proxy if available
-        if (this.proxyUrl) {
-            requestOptions.proxyUrl = this.proxyUrl
-        }
-
-        return await gotScraping(requestOptions)
-    }
-
-    extractVideoId(url) {
-        const regex =
-            /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
-        const match = url.match(regex)
-        return match ? match[1] : null
-    }
-
     async extractViaYtDlp(videoId) {
         console.log(`Trying yt-dlp direct download for ${videoId}`)
 
@@ -334,6 +297,43 @@ export class ApifyYouTubeProxy {
         }
 
         throw new Error('yt-dlp extraction returned no audio file')
+    }
+
+    async makeRequest(url, options = {}) {
+        const requestOptions = {
+            url,
+            headers: {
+                'User-Agent': this.currentProfile.userAgent,
+                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': this.currentProfile.acceptLanguage,
+                'Accept-Encoding': 'gzip, deflate, br',
+                DNT: '1',
+                Connection: 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                ...options.headers,
+            },
+            timeout: { request: 120000 }, // 2 minutes timeout for large audio files
+            retry: { limit: 0 },
+            ...options,
+        }
+
+        // Use Apify proxy if available
+        if (this.proxyUrl) {
+            requestOptions.proxyUrl = this.proxyUrl
+        }
+
+        return await gotScraping(requestOptions)
+    }
+
+    extractVideoId(url) {
+        const regex =
+            /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+        const match = url.match(regex)
+        return match ? match[1] : null
     }
 
     async proxyGenericRequest(targetUrl) {
