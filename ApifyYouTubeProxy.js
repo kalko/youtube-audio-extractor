@@ -258,6 +258,13 @@ export class ApifyYouTubeProxy {
 
                     const uploadResult = await upload.done()
                     console.log(`yt-dlp audio uploaded successfully to R2`)
+                    console.log('Upload result details:', {
+                        bucket: bucketName,
+                        key: objectKey,
+                        etag: uploadResult.ETag,
+                        location: uploadResult.Location,
+                        url: `https://${bucketName}.r2.dev/${objectKey}`,
+                    })
 
                     // Clean up temporary file
                     try {
