@@ -2,6 +2,56 @@
 // This bypasses all signature issues by using the proven yt-dlp tool
 
 export class YtDlpExtractor {
+    static async getVideoFormats(videoId, options = {}) {
+        const args = ['-J', '--no-warnings', '--skip-download', `https://www.youtube.com/watch?v=${videoId}`]
+
+        if (options.proxy) {
+            args.push('--proxy', options.proxy)
+        }
+
+        const { stdout } = await this.runYtDlp(args)
+        const metadata = JSON.parse(stdout)
+        const formats = Array.isArray(metadata.formats) ? metadata.formats : []
+        return {
+            formats,
+            metadata,
+        }
+    }
+
+    static pickMinimalAudioFormat(formats) {
+        const audioFormats = formats.filter((format) => {
+            if (!format) return false
+            const acodec = format.acodec || format.acodec === '' ? format.acodec : format.audio_codec
+            return acodec && acodec !== 'none'
+        })
+
+        if (audioFormats.length === 0) {
+            return null
+        }
+
+        const preferredItags = ['249', '250', '140', '251', '139']
+        for (const itag of preferredItags) {
+            const match = audioFormats.find((format) => format.format_id === itag)
+            if (match) {
+                return match
+            }
+        }
+
+        const sorted = audioFormats
+            .filter((format) => typeof format.abr === 'number' || typeof format.tbr === 'number')
+            .sort((a, b) => {
+                const aRate = typeof a.abr === 'number' ? a.abr : a.tbr ?? Number.POSITIVE_INFINITY
+                const bRate = typeof b.abr === 'number' ? b.abr : b.tbr ?? Number.POSITIVE_INFINITY
+                return aRate - bRate
+            })
+
+        if (sorted.length > 0) {
+            return sorted[0]
+        }
+
+        return audioFormats[0]
+    }
+
     static async extractAudioUrl(videoId, options = {}) {
         console.log(`Using yt-dlp to extract audio URL for: ${videoId}`)
 
@@ -43,23 +93,48 @@ export class YtDlpExtractor {
     static async downloadAudioDirect(videoId, options = {}) {
         console.log(`Using yt-dlp to download audio directly for: ${videoId}`)
 
-        const outputPath = `/tmp/audio_${videoId}.%(ext)s`
+        const minimizeSize = !!options.minimizeSize
+        let selectedFormat = null
+        if (minimizeSize) {
+            try {
+                const { formats } = await this.getVideoFormats(videoId, options)
+                selectedFormat = this.pickMinimalAudioFormat(formats)
+                if (!selectedFormat) {
+                    console.log('No minimal audio format found, falling back to default selector')
+                } else {
+                    console.log(
+                        `Selected minimal audio format itag=${selectedFormat.format_id}, ext=${selectedFormat.ext}, codec=${selectedFormat.acodec}, abr=${selectedFormat.abr}`,
+                    )
+                }
+            } catch (formatError) {
+                console.log(`Format probing failed, falling back to default selector: ${formatError.message}`)
+            }
+        }
+
+        const extOverride = selectedFormat?.ext
+        const outputPath = extOverride
+            ? `/tmp/audio_${videoId}.${extOverride}`
+            : `/tmp/audio_${videoId}.%(ext)s`
+
+        const formatSelector = selectedFormat
+            ? selectedFormat.format_id
+            : 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio'
 
         const args = [
             '--format',
-            'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+            formatSelector,
             '--output',
             outputPath,
             '--no-warnings',
             '--no-playlist',
-            '--no-check-certificate', // Skip SSL checks for speed
+            '--no-check-certificate',
             '--socket-timeout',
-            '15', // 15 second socket timeout
+            '15',
             '--retries',
-            '2', // Only 2 retries for speed
+            '2',
             '--fragment-retries',
-            '2', // Fragment retry limit
-            '--no-continue', // Don't resume partial downloads
+            '2',
+            '--no-continue',
             `https://www.youtube.com/watch?v=${videoId}`,
         ]
 
@@ -85,10 +160,10 @@ export class YtDlpExtractor {
                 throw new Error(`yt-dlp error: ${stderr}`)
             }
 
-            // Find the downloaded file
             const fs = await import('fs')
             const files = await fs.promises.readdir('/tmp')
-            const audioFile = files.find((f) => f.startsWith(`audio_${videoId}.`))
+            const expectedPrefix = `audio_${videoId}.`
+            const audioFile = files.find((f) => f.startsWith(expectedPrefix))
 
             if (!audioFile) {
                 throw new Error('yt-dlp did not create expected output file')
@@ -97,10 +172,32 @@ export class YtDlpExtractor {
             const fullPath = `/tmp/${audioFile}`
             console.log(`yt-dlp downloaded audio to: ${fullPath}`)
 
+            const stats = await fs.promises.stat(fullPath)
+
+            const actualExt = audioFile.substring(audioFile.lastIndexOf('.') + 1)
+
+            const meta = selectedFormat
+                ? {
+                      itag: selectedFormat.format_id,
+                      ext: selectedFormat.ext || actualExt,
+                      codec: selectedFormat.acodec || selectedFormat.audio_codec || null,
+                      bitrateKbps:
+                          typeof selectedFormat.abr === 'number'
+                              ? selectedFormat.abr
+                              : typeof selectedFormat.tbr === 'number'
+                              ? selectedFormat.tbr
+                              : null,
+                      filesizeApprox: selectedFormat.filesize || selectedFormat.filesize_approx || null,
+                  }
+                : null
+
             return {
                 filePath: fullPath,
                 fileName: audioFile,
                 method: 'yt-dlp-direct',
+                fileSizeBytes: stats.size,
+                ext: actualExt,
+                formatMeta: meta,
             }
         } catch (error) {
             console.error(`yt-dlp download failed: ${error.message}`)

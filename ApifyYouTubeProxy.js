@@ -32,11 +32,21 @@ const BROWSER_PROFILES = [
     },
 ]
 
+const AUDIO_MIME_TYPES = {
+    webm: 'audio/webm',
+    m4a: 'audio/mp4',
+    mp4: 'audio/mp4',
+    mp3: 'audio/mpeg',
+    opus: 'audio/opus',
+}
+
 export class ApifyYouTubeProxy {
     constructor() {
         this.proxyUrl = null
         this.currentProfile = null
         this.r2Client = null
+        this.r2Bucket = process.env.CLOUDFLARE_R2_BUCKET || null
+        this.minimizeSize = true
     }
 
     async initialize(input = {}) {
@@ -48,12 +58,14 @@ export class ApifyYouTubeProxy {
 
         this.proxyUrl = await proxyConfiguration.newUrl()
         this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
+        this.minimizeSize = input.minimizeSize === undefined ? true : Boolean(input.minimizeSize)
 
         // Initialize R2 client using environment variables
         const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID
         const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
         const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
         const r2Endpoint = process.env.CLOUDFLARE_R2_ENDPOINT
+        this.r2Bucket = process.env.CLOUDFLARE_R2_BUCKET || this.r2Bucket
 
         if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
             this.r2Client = new S3Client({
@@ -73,6 +85,7 @@ export class ApifyYouTubeProxy {
         console.log(`Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
         console.log(`Profile: ${this.currentProfile.platform}`)
         console.log(`R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
+        console.log(`Minimize size mode: ${this.minimizeSize ? 'ON' : 'OFF'}`)
 
         // Log current IP address
         await this.logCurrentIP()
@@ -118,54 +131,66 @@ export class ApifyYouTubeProxy {
         console.log(`Extracting video: ${videoId}`)
 
         // Fast path: check if file exists on R2 first
-        if (uploadToR2 && this.r2Client) {
-            const bucketName = process.env.CLOUDFLARE_R2_BUCKET
-            const objectKey = `temp-audio/${videoId}.mp4`
-            const { HeadObjectCommand } = await import('@aws-sdk/client-s3')
-            try {
-                await this.r2Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: objectKey }))
-                // File exists, return result immediately
+        if (uploadToR2 && this.r2Client && this.r2Bucket) {
+            const cachedAsset = await this.findExistingR2Asset(videoId)
+            if (cachedAsset) {
+                const { key, url, metadata, contentType, etag, lastModified, size } = cachedAsset
                 console.log('File already exists on R2, skipping download.')
+
+                const bitrateKbps = metadata.audio_bitrate_kbps
+                    ? Number(metadata.audio_bitrate_kbps)
+                    : undefined
+                const bitrate = Number.isFinite(bitrateKbps) ? bitrateKbps * 1000 : undefined
+                const filename = key.split('/').pop()
+                const codec = metadata.audio_codec || 'unknown'
+                const ext = metadata.audio_ext || (filename?.includes('.') ? filename.split('.').pop() : '')
+                const minimizeSizeMeta = metadata.minimize_size === 'true'
+
                 return {
                     success: true,
                     videoId,
-                    videoInfo: { title: 'yt-dlp extracted (cached)' },
+                    videoInfo: {
+                        title: metadata.title || 'yt-dlp extracted (cached)',
+                    },
                     audioFormat: {
-                        itag: 'yt-dlp',
-                        mimeType: 'audio/mp4',
-                        audioQuality: 'AUDIO_QUALITY_HIGH',
-                        bitrate: 128000,
-                        codec: 'mp4a.40.2',
-                        whisperReady: true,
+                        itag: metadata.ytdlp_format_id || metadata.audio_itag || 'yt-dlp',
+                        mimeType: contentType,
+                        audioQuality:
+                            metadata.audio_quality ||
+                            (minimizeSizeMeta ? 'AUDIO_QUALITY_MINIMIZED' : 'AUDIO_QUALITY_HIGH'),
+                        bitrate,
+                        codec,
+                        whisperReady: metadata.whisper_ready !== 'false',
                         ytDlpExtracted: true,
+                        minimizeSize: minimizeSizeMeta,
+                        formatUsed: metadata.format || metadata.format_used || null,
                     },
                     whisperReady: {
-                        audioUrl: `https://${bucketName}.r2.dev/${objectKey}`,
-                        format: 'audio/mp4',
-                        codec: 'best-quality',
-                        filename: `${videoId}.mp4`,
+                        audioUrl: url,
+                        format: contentType,
+                        codec,
+                        bitrateKbps,
+                        filename,
+                        sizeBytes: size,
                     },
                     r2Upload: {
-                        bucket: bucketName,
-                        key: objectKey,
-                        url: `https://${bucketName}.r2.dev/${objectKey}`,
-                        // No ETag or Location since not uploading now
+                        bucket: this.r2Bucket,
+                        key,
+                        url,
+                        etag,
+                        lastModified,
                     },
                     proxyInfo: {
                         proxyUsed: !!this.proxyUrl,
                         profile: this.currentProfile.platform,
                         extractionMethod: 'yt-dlp-r2-cached',
+                        minimizeSize: minimizeSizeMeta,
                     },
-                    extractedAt: new Date().toISOString(),
-                    method: 'yt-dlp-r2-direct',
-                    ytDlpDirect: true, // Flag for direct yt-dlp result
+                    extractedAt: metadata.extracted_at || new Date().toISOString(),
+                    method: metadata.method || 'yt-dlp-r2-direct',
+                    ytDlpDirect: true,
                     cached: true,
                 }
-            } catch (err) {
-                if (err.name !== 'NotFound' && err.$metadata?.httpStatusCode !== 404) {
-                    console.error('Error checking R2 for existing file:', err)
-                }
-                // If not found, continue to download
             }
         }
 
@@ -199,131 +224,117 @@ export class ApifyYouTubeProxy {
     async extractViaYtDlp(videoId) {
         console.log(`Trying yt-dlp direct download for ${videoId}`)
 
-        const formatOptions = [
-            'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio', // Current preferred format
-            'bestaudio/best[height<=720]', // Fallback: best audio or low-res video
-            'worst[ext=m4a]/worst[ext=mp3]/worst', // Last resort: worst quality but preferred formats
-            'best/worst', // Ultimate fallback: any format available
-        ]
-
-        for (let i = 0; i < formatOptions.length; i++) {
-            try {
-                const extractorOptions = {
-                    format: formatOptions[i],
-                }
-                if (this.proxyUrl) {
-                    extractorOptions.proxy = this.proxyUrl
-                }
-
-                console.log(`Trying format option ${i + 1}: ${formatOptions[i]}`)
-
-                // Use yt-dlp to download the file directly
-                const result = await YtDlpExtractor.downloadAudioDirect(videoId, extractorOptions)
-
-                if (result.filePath) {
-                    console.log(`yt-dlp downloaded audio successfully with format: ${formatOptions[i]}`)
-                    console.log(`yt-dlp downloaded audio successfully to: ${result.filePath}`)
-
-                    // Read the file and upload to R2 directly
-                    const fs = await import('fs')
-                    const fileBuffer = await fs.promises.readFile(result.filePath)
-
-                    // Upload to R2
-                    const bucketName = process.env.CLOUDFLARE_R2_BUCKET
-                    if (!bucketName) {
-                        throw new Error('CLOUDFLARE_R2_BUCKET environment variable not set')
-                    }
-
-                    const objectKey = `temp-audio/${videoId}.mp4`
-                    console.log(`Uploading yt-dlp file to R2: ${objectKey}`)
-
-                    const upload = new Upload({
-                        client: this.r2Client,
-                        params: {
-                            Bucket: bucketName,
-                            Key: objectKey,
-                            Body: fileBuffer,
-                            ContentType: 'audio/mp4',
-                            Metadata: {
-                                videoId: videoId,
-                                title: 'yt-dlp extracted',
-                                format: `${formatOptions[i]}`,
-                                processingStatus: 'ready-for-transcription',
-                                extractedAt: new Date().toISOString(),
-                                method: 'yt-dlp-direct',
-                                whisperOptimized: 'true',
-                            },
-                        },
-                    })
-
-                    const uploadResult = await upload.done()
-                    console.log(`yt-dlp audio uploaded successfully to R2`)
-                    console.log('Upload result details:', {
-                        bucket: bucketName,
-                        key: objectKey,
-                        etag: uploadResult.ETag,
-                        location: uploadResult.Location,
-                        url: `https://${bucketName}.r2.dev/${objectKey}`,
-                    })
-
-                    // Clean up temporary file
-                    try {
-                        await fs.promises.unlink(result.filePath)
-                        console.log(`Cleaned up temporary file: ${result.filePath}`)
-                    } catch (cleanupError) {
-                        console.log(`Could not clean up temp file: ${cleanupError.message}`)
-                    }
-
-                    // Return R2 upload result directly
-                    return {
-                        success: true,
-                        videoId,
-                        videoInfo: { title: 'yt-dlp extracted' },
-                        audioFormat: {
-                            itag: 'yt-dlp',
-                            mimeType: 'audio/mp4',
-                            audioQuality: 'AUDIO_QUALITY_HIGH',
-                            bitrate: 128000,
-                            codec: 'mp4a.40.2',
-                            whisperReady: true,
-                            ytDlpExtracted: true,
-                            formatUsed: formatOptions[i],
-                        },
-                        whisperReady: {
-                            audioUrl: `https://${bucketName}.r2.dev/${objectKey}`,
-                            format: 'audio/mp4',
-                            codec: 'best-quality',
-                            filename: `${videoId}.mp4`,
-                        },
-                        r2Upload: {
-                            bucket: bucketName,
-                            key: objectKey,
-                            url: `https://${bucketName}.r2.dev/${objectKey}`,
-                            etag: uploadResult.ETag,
-                            location: uploadResult.Location,
-                        },
-                        proxyInfo: {
-                            proxyUsed: !!this.proxyUrl,
-                            profile: this.currentProfile.platform,
-                            extractionMethod: 'yt-dlp-direct-download',
-                        },
-                        extractedAt: new Date().toISOString(),
-                        method: 'yt-dlp-r2-direct',
-                        ytDlpDirect: true, // Flag for direct yt-dlp result
-                    }
-                }
-            } catch (error) {
-                console.log(`Format ${formatOptions[i]} failed: ${error.message}`)
-                if (i === formatOptions.length - 1) {
-                    throw new Error(
-                        `yt-dlp direct download failed after all format attempts: ${error.message}`,
-                    )
-                }
-                // Continue to next format option
+        try {
+            const extractorOptions = {
+                minimizeSize: this.minimizeSize,
             }
-        }
+            if (this.proxyUrl) {
+                extractorOptions.proxy = this.proxyUrl
+            }
 
-        throw new Error('yt-dlp extraction returned no audio file after all format attempts')
+            const result = await YtDlpExtractor.downloadAudioDirect(videoId, extractorOptions)
+
+            if (!result.filePath) {
+                throw new Error('yt-dlp did not return a file path')
+            }
+
+            const fs = await import('fs')
+            const fileBuffer = await fs.promises.readFile(result.filePath)
+
+            if (!this.r2Client || !this.r2Bucket) {
+                throw new Error('R2 client or bucket is not configured')
+            }
+
+            const ext = result.ext || 'mp4'
+            const objectKey = this.buildR2ObjectKey(videoId, ext)
+            const contentType = this.resolveMimeType(ext)
+
+            console.log(`Uploading yt-dlp file to R2: ${objectKey}`)
+
+            const metadata = this.buildObjectMetadata({
+                videoId,
+                formatMeta: result.formatMeta,
+                minimizeSize: this.minimizeSize,
+                fileSizeBytes: result.fileSizeBytes ?? fileBuffer.length,
+                ext,
+            })
+
+            const upload = new Upload({
+                client: this.r2Client,
+                params: {
+                    Bucket: this.r2Bucket,
+                    Key: objectKey,
+                    Body: fileBuffer,
+                    ContentType: contentType,
+                    Metadata: metadata,
+                },
+            })
+
+            const uploadResult = await upload.done()
+            console.log(`yt-dlp audio uploaded successfully to R2`)
+            console.log('Upload result details:', {
+                bucket: this.r2Bucket,
+                key: objectKey,
+                etag: uploadResult.ETag,
+                location: uploadResult.Location,
+                url: `https://${this.r2Bucket}.r2.dev/${objectKey}`,
+            })
+
+            try {
+                await fs.promises.unlink(result.filePath)
+                console.log(`Cleaned up temporary file: ${result.filePath}`)
+            } catch (cleanupError) {
+                console.log(`Could not clean up temp file: ${cleanupError.message}`)
+            }
+
+            const bitrateKbps = result.formatMeta?.bitrateKbps
+            const bitrate = Number.isFinite(bitrateKbps) ? bitrateKbps * 1000 : undefined
+            const codec = result.formatMeta?.codec || (ext === 'webm' ? 'opus' : 'mp4a.40.2')
+            const audioQuality = this.minimizeSize ? 'AUDIO_QUALITY_MINIMIZED' : 'AUDIO_QUALITY_HIGH'
+
+            return {
+                success: true,
+                videoId,
+                videoInfo: { title: 'yt-dlp extracted' },
+                audioFormat: {
+                    itag: result.formatMeta?.itag || 'yt-dlp',
+                    mimeType: contentType,
+                    audioQuality,
+                    bitrate,
+                    codec,
+                    whisperReady: true,
+                    ytDlpExtracted: true,
+                    minimizeSize: this.minimizeSize,
+                },
+                whisperReady: {
+                    audioUrl: `https://${this.r2Bucket}.r2.dev/${objectKey}`,
+                    format: contentType,
+                    codec,
+                    bitrateKbps,
+                    filename: objectKey.split('/').pop(),
+                    sizeBytes: result.fileSizeBytes ?? fileBuffer.length,
+                },
+                r2Upload: {
+                    bucket: this.r2Bucket,
+                    key: objectKey,
+                    url: `https://${this.r2Bucket}.r2.dev/${objectKey}`,
+                    etag: uploadResult.ETag,
+                    location: uploadResult.Location,
+                },
+                proxyInfo: {
+                    proxyUsed: !!this.proxyUrl,
+                    profile: this.currentProfile.platform,
+                    extractionMethod: 'yt-dlp-direct-download',
+                    minimizeSize: this.minimizeSize,
+                },
+                extractedAt: new Date().toISOString(),
+                method: 'yt-dlp-r2-direct',
+                ytDlpDirect: true,
+            }
+        } catch (error) {
+            console.log(`yt-dlp extraction failed: ${error.message}`)
+            throw new Error(`yt-dlp direct download failed: ${error.message}`)
+        }
     }
 
     async makeRequest(url, options = {}) {
@@ -382,5 +393,98 @@ export class ApifyYouTubeProxy {
         } catch (error) {
             throw new Error(`Proxy request failed: ${error.message}`)
         }
+    }
+
+    resolveMimeType(ext) {
+        if (!ext) return 'application/octet-stream'
+        return AUDIO_MIME_TYPES[ext.toLowerCase()] || 'application/octet-stream'
+    }
+
+    buildR2ObjectKey(videoId, ext) {
+        const safeExt = (ext || 'mp4').toLowerCase()
+        return `temp-audio/${videoId}.${safeExt}`
+    }
+
+    buildCandidateKeys(videoId) {
+        const prioritizedExts = this.minimizeSize
+            ? ['webm', 'm4a', 'mp4', 'mp3']
+            : ['m4a', 'mp4', 'webm', 'mp3']
+        const uniqueExts = Array.from(new Set(prioritizedExts))
+        return uniqueExts.map((ext) => this.buildR2ObjectKey(videoId, ext))
+    }
+
+    async findExistingR2Asset(videoId) {
+        if (!this.r2Client || !this.r2Bucket) {
+            return null
+        }
+
+        const keys = this.buildCandidateKeys(videoId)
+        const { HeadObjectCommand } = await import('@aws-sdk/client-s3')
+
+        for (const key of keys) {
+            try {
+                const head = await this.r2Client.send(
+                    new HeadObjectCommand({ Bucket: this.r2Bucket, Key: key }),
+                )
+
+                const metadata = head.Metadata || {}
+                const contentType = head.ContentType || this.resolveMimeType(key.split('.').pop())
+
+                return {
+                    key,
+                    metadata,
+                    contentType,
+                    url: `https://${this.r2Bucket}.r2.dev/${key}`,
+                    etag: head.ETag,
+                    lastModified: head.LastModified,
+                    size: head.ContentLength,
+                }
+            } catch (err) {
+                if (err.name !== 'NotFound' && err.$metadata?.httpStatusCode !== 404) {
+                    console.error('Error checking R2 for existing file:', err)
+                }
+            }
+        }
+
+        return null
+    }
+
+    buildObjectMetadata({ videoId, formatMeta, minimizeSize, fileSizeBytes, ext }) {
+        const metadata = {
+            video_id: videoId,
+            method: 'yt-dlp-direct',
+            extracted_at: new Date().toISOString(),
+            minimize_size: minimizeSize ? 'true' : 'false',
+            audio_ext: (ext || '').toLowerCase(),
+            whisper_ready: 'true',
+            title: 'yt-dlp extracted',
+            audio_quality: minimizeSize ? 'AUDIO_QUALITY_MINIMIZED' : 'AUDIO_QUALITY_HIGH',
+        }
+
+        if (Number.isFinite(fileSizeBytes)) {
+            metadata.file_size_bytes = String(fileSizeBytes)
+        }
+
+        if (formatMeta?.itag) {
+            metadata.ytdlp_format_id = String(formatMeta.itag)
+        }
+
+        if (formatMeta?.codec) {
+            metadata.audio_codec = String(formatMeta.codec)
+        }
+
+        if (Number.isFinite(formatMeta?.bitrateKbps)) {
+            metadata.audio_bitrate_kbps = String(Math.round(formatMeta.bitrateKbps))
+        }
+
+        if (formatMeta?.itag) {
+            metadata.format_used = String(formatMeta.itag)
+        }
+
+        if (formatMeta?.filesizeApprox) {
+            metadata.source_filesize_bytes = String(formatMeta.filesizeApprox)
+        }
+
+        return metadata
     }
 }
