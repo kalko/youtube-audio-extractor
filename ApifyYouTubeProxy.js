@@ -40,6 +40,13 @@ const AUDIO_MIME_TYPES = {
     opus: 'audio/opus',
 }
 
+const PROXY_GROUPS = {
+    DATACENTER: ['SHADER'],
+    RESIDENTIAL: ['RESIDENTIAL'],
+}
+
+const pickRandomProfile = () => BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
+
 export class ApifyYouTubeProxy {
     constructor() {
         this.proxyUrl = null
@@ -47,18 +54,22 @@ export class ApifyYouTubeProxy {
         this.r2Client = null
         this.r2Bucket = process.env.CLOUDFLARE_R2_BUCKET || null
         this.minimizeSize = true
+        this.proxyConfigurations = {}
+        this.currentProxyGroup = null
+        this.proxyStrategy = 'datacenter-first'
+        this.preferResidential = false
+        this.input = {}
     }
 
     async initialize(input = {}) {
-        // Get Apify proxy configuration (automatic IP rotation)
-        const proxyConfiguration = await Actor.createProxyConfiguration({
-            groups: ['RESIDENTIAL'], // Use residential IPs for better stealth
-            countryCode: input.countryCode || 'US',
-        })
-
-        this.proxyUrl = await proxyConfiguration.newUrl()
-        this.currentProfile = BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)]
+        this.input = input || {}
         this.minimizeSize = input.minimizeSize === undefined ? true : Boolean(input.minimizeSize)
+        this.preferResidential = Boolean(input.preferResidential)
+        this.proxyConfigurations = {}
+        this.proxyUrl = null
+        this.currentProxyGroup = null
+        this.currentProfile = null
+        this.proxyStrategy = this.resolveProxyStrategy(input)
 
         // Initialize R2 client using environment variables
         const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID
@@ -81,17 +92,121 @@ export class ApifyYouTubeProxy {
             console.log('R2 environment variables not found - R2 upload disabled')
         }
 
+        await this.establishInitialProxy()
+
         console.log('Apify Actor initialized with:')
-        console.log(`Proxy: ${this.proxyUrl ? 'ENABLED (Residential)' : 'DISABLED'}`)
-        console.log(`Profile: ${this.currentProfile.platform}`)
+        console.log(`Proxy strategy: ${this.proxyStrategy}`)
+        console.log(`Proxy group: ${this.currentProxyGroup || 'NONE'}`)
+        console.log(`Profile: ${this.currentProfile?.platform || 'unknown'}`)
         console.log(`R2 Upload: ${this.r2Client ? 'ENABLED' : 'DISABLED'}`)
         console.log(`Minimize size mode: ${this.minimizeSize ? 'ON' : 'OFF'}`)
 
-        // Log current IP address
-        await this.logCurrentIP()
+        if (this.proxyUrl) {
+            await this.logCurrentIP()
+        } else {
+            console.log('No proxy configured at initialization')
+        }
+    }
+
+    resolveProxyStrategy(input = {}) {
+        if (typeof input.proxyStrategy === 'string') {
+            const normalized = input.proxyStrategy.toLowerCase()
+            if (
+                ['datacenter-first', 'residential-first', 'datacenter-only', 'residential-only'].includes(
+                    normalized,
+                )
+            ) {
+                return normalized
+            }
+        }
+
+        if (input.preferResidential) {
+            return 'residential-first'
+        }
+
+        return 'datacenter-first'
+    }
+
+    getProxyPlan() {
+        const normalized = (this.proxyStrategy || '').toLowerCase()
+
+        switch (normalized) {
+            case 'residential-only':
+                return [{ key: 'RESIDENTIAL', label: 'residential' }]
+            case 'residential-first':
+                return [
+                    { key: 'RESIDENTIAL', label: 'residential' },
+                    { key: 'DATACENTER', label: 'datacenter' },
+                ]
+            case 'datacenter-only':
+                return [{ key: 'DATACENTER', label: 'datacenter' }]
+            case 'datacenter-first':
+            default:
+                return [
+                    { key: 'DATACENTER', label: 'datacenter' },
+                    { key: 'RESIDENTIAL', label: 'residential' },
+                ]
+        }
+    }
+
+    async establishInitialProxy() {
+        const plan = this.getProxyPlan()
+        let lastError = null
+
+        for (const attempt of plan) {
+            try {
+                await this.useProxyGroup(attempt.key)
+                console.log(`Initial proxy group set to ${attempt.label}`)
+                return
+            } catch (error) {
+                lastError = error
+                console.log(`Failed to initialize ${attempt.label} proxy group: ${error.message}`)
+            }
+        }
+
+        if (lastError) {
+            throw lastError
+        }
+    }
+
+    async useProxyGroup(groupKey) {
+        const normalized = (groupKey || '').toUpperCase()
+        const groups = PROXY_GROUPS[normalized]
+
+        if (!groups) {
+            throw new Error(`Unsupported proxy group: ${groupKey}`)
+        }
+
+        if (!this.proxyConfigurations[normalized]) {
+            const configOptions = { groups }
+            if (normalized === 'RESIDENTIAL' && this.input?.countryCode) {
+                configOptions.countryCode = this.input.countryCode
+            }
+
+            this.proxyConfigurations[normalized] = await Actor.createProxyConfiguration(configOptions)
+        }
+
+        const proxyConfiguration = this.proxyConfigurations[normalized]
+        const newUrl = await proxyConfiguration.newUrl()
+
+        if (!newUrl) {
+            throw new Error(`Failed to retrieve proxy URL for group ${normalized}`)
+        }
+
+        this.proxyUrl = newUrl
+        this.currentProxyGroup = normalized
+        this.currentProfile = pickRandomProfile()
+
+        console.log(`Proxy group switched to ${normalized.toLowerCase()}`)
     }
 
     async logCurrentIP() {
+        if (!this.proxyUrl) {
+            console.log('Skipping IP check because no proxy URL is configured')
+            return
+        }
+
+        console.log(`Checking current IP via ${this.currentProxyGroup || 'unknown'} proxies`)
         try {
             const ipResponse = await this.makeRequest('https://httpbin.org/ip')
             console.log('IP check status:', ipResponse.statusCode)
@@ -128,7 +243,7 @@ export class ApifyYouTubeProxy {
             throw new Error('Invalid YouTube URL')
         }
 
-        console.log(`Extracting video: ${videoId}`)
+        console.log(`Extracting video: ${videoId} (proxy strategy: ${this.proxyStrategy})`)
 
         // Fast path: check if file exists on R2 first
         if (uploadToR2 && this.r2Client && this.r2Bucket) {
@@ -182,9 +297,11 @@ export class ApifyYouTubeProxy {
                     },
                     proxyInfo: {
                         proxyUsed: !!this.proxyUrl,
-                        profile: this.currentProfile.platform,
+                        profile: this.currentProfile?.platform || 'unknown',
                         extractionMethod: 'yt-dlp-r2-cached',
                         minimizeSize: minimizeSizeMeta,
+                        group: this.currentProxyGroup,
+                        strategy: this.proxyStrategy,
                     },
                     extractedAt: metadata.extracted_at || new Date().toISOString(),
                     method: metadata.method || 'yt-dlp-r2-direct',
@@ -194,30 +311,69 @@ export class ApifyYouTubeProxy {
             }
         }
 
-        // Use yt-dlp as the primary extraction method
+        const plan = this.getProxyPlan()
+        let lastError = null
+
+        for (let index = 0; index < plan.length; index++) {
+            const attempt = plan[index]
+            const hasMore = index < plan.length - 1
+
+            try {
+                await this.useProxyGroup(attempt.key)
+                console.log(`Attempt ${index + 1}/${plan.length} using ${attempt.label} proxies`)
+                await this.logCurrentIP()
+            } catch (configError) {
+                lastError = configError
+                console.log(`Proxy configuration for ${attempt.label} proxies failed: ${configError.message}`)
+                if (!hasMore) {
+                    throw configError
+                }
+                continue
+            }
+
+            try {
+                const result = await this.performExtractionWithCurrentProxy(videoId, uploadToR2)
+                return result
+            } catch (error) {
+                lastError = error
+                console.log(
+                    `Extraction with ${attempt.label} proxies failed: ${error.message}${
+                        hasMore ? ' - falling back to next proxy group' : ''
+                    }`,
+                )
+                if (!hasMore) {
+                    throw error
+                }
+            }
+        }
+
+        throw lastError || new Error('All proxy attempts failed')
+    }
+
+    async performExtractionWithCurrentProxy(videoId, uploadToR2) {
         try {
             console.log('Using yt-dlp extraction method')
             const result = await this.extractViaYtDlp(videoId)
 
-            // For R2 upload mode, check if this is a direct yt-dlp R2 result
             if (uploadToR2) {
                 if (result && result.ytDlpDirect && result.r2Upload) {
                     console.log('yt-dlp direct R2 upload completed successfully')
                     return result
-                } else {
-                    throw new Error('yt-dlp did not return a valid R2 upload result')
                 }
-            } else {
-                // Original logic for non-R2 mode
-                if (result && (result.audioFormats?.length > 0 || result.url)) {
-                    return result
-                } else {
-                    throw new Error('yt-dlp did not return usable result')
-                }
+                throw new Error('yt-dlp did not return a valid R2 upload result')
             }
+
+            if (result && (result.audioFormats?.length > 0 || result.url || result.r2Upload)) {
+                return result
+            }
+
+            throw new Error('yt-dlp did not return usable result')
         } catch (error) {
-            console.log(`yt-dlp extraction failed: ${error.message}`)
-            throw new Error('YouTube extraction failed')
+            throw new Error(
+                `YouTube extraction failed via ${this.currentProxyGroup || 'unknown'} proxies: ${
+                    error.message
+                }`,
+            )
         }
     }
 
@@ -323,9 +479,11 @@ export class ApifyYouTubeProxy {
                 },
                 proxyInfo: {
                     proxyUsed: !!this.proxyUrl,
-                    profile: this.currentProfile.platform,
+                    profile: this.currentProfile?.platform || 'unknown',
                     extractionMethod: 'yt-dlp-direct-download',
                     minimizeSize: this.minimizeSize,
+                    group: this.currentProxyGroup,
+                    strategy: this.proxyStrategy,
                 },
                 extractedAt: new Date().toISOString(),
                 method: 'yt-dlp-r2-direct',
@@ -338,12 +496,17 @@ export class ApifyYouTubeProxy {
     }
 
     async makeRequest(url, options = {}) {
+        const profile = this.currentProfile || pickRandomProfile()
+        if (!this.currentProfile) {
+            this.currentProfile = profile
+        }
+
         const requestOptions = {
             url,
             headers: {
-                'User-Agent': this.currentProfile.userAgent,
+                'User-Agent': profile.userAgent,
                 Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': this.currentProfile.acceptLanguage,
+                'Accept-Language': profile.acceptLanguage,
                 'Accept-Encoding': 'gzip, deflate, br',
                 DNT: '1',
                 Connection: 'keep-alive',
@@ -386,7 +549,9 @@ export class ApifyYouTubeProxy {
                 body: response.body,
                 proxyInfo: {
                     proxyUsed: !!this.proxyUrl,
-                    profile: this.currentProfile.platform,
+                    profile: this.currentProfile?.platform || 'unknown',
+                    group: this.currentProxyGroup,
+                    strategy: this.proxyStrategy,
                     timestamp: new Date().toISOString(),
                 },
             }
@@ -459,6 +624,8 @@ export class ApifyYouTubeProxy {
             whisper_ready: 'true',
             title: 'yt-dlp extracted',
             audio_quality: minimizeSize ? 'AUDIO_QUALITY_MINIMIZED' : 'AUDIO_QUALITY_HIGH',
+            proxy_group: (this.currentProxyGroup || '').toLowerCase(),
+            proxy_strategy: this.proxyStrategy || 'unknown',
         }
 
         if (Number.isFinite(fileSizeBytes)) {

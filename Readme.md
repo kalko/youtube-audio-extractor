@@ -19,6 +19,7 @@ This project is an **Apify Actor** designed to extract audio from YouTube videos
 -   Generic HTTP proxy mode
 -   Configurable via Apify input (YouTube URL, proxy URL, country code)
 -   Optional `minimizeSize` flag to prefer the smallest Whisper-ready audio format (Opus WEBM when available)
+-   Datacenter proxy attempt with automatic residential fallback when YouTube blocks the initial request
 -   Returns results in Apify dataset and key-value store
 
 ## Usage
@@ -33,6 +34,8 @@ Deploy this actor to your Apify account. Set up environment variables for Cloudf
 -   `proxyUrl` (string): (Alternative mode) Any URL to proxy via residential IPs
 -   `countryCode` (string, optional): Proxy geolocation (default: US)
 -   `minimizeSize` (boolean, optional, default: `true`): When `true`, yt-dlp pre-selects the smallest Opus/WebM (or next best) audio that remains compatible with Whisper. Set to `false` to keep the previous larger m4a output.
+-   `preferResidential` (boolean, optional, default: `false`): If `true`, start with residential proxies before falling back to datacenter.
+-   `proxyStrategy` (string, optional): Fine-grained proxy control. Accepted values: `datacenter-first` (default), `residential-first`, `datacenter-only`, `residential-only`.
 
 #### Example Input (YouTube Extraction)
 
